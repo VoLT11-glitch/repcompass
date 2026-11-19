@@ -443,7 +443,10 @@ with t_over:
           "A regular pattern with few empty weeks. Consistency drives results more than any program.",
           "Look for long empty stretches. Those gaps are your biggest lever, bigger than changing exercises.")
     weeks, z, txt = A.calendar_grid(df)
-    week_starts = A.calendar_week_starts(df)
+    # Mondays of the calendar's columns (same range as A.calendar_grid). Kept here, not in analysis.py,
+    # because Streamlit Cloud hot-reloads app.py but can keep an older analysis module after a push.
+    _d0, _d1 = df["day"].min(), df["day"].max()
+    week_starts = list(pd.date_range(_d0 - pd.Timedelta(days=_d0.weekday()), _d1, freq="7D"))
     week_keys = [f"{d:%Y-%m-%d}" for d in week_starts]  # unique even across years
     fig = go.Figure(go.Heatmap(
         z=z, x=week_keys, y=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], text=txt,

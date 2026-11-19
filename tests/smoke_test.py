@@ -56,11 +56,13 @@ if exports:
 else:
     print("SKIP real export (none found)")
 
-# 3b. calendar month labels line up with the calendar's week columns
+# 3b. calendar month labels line up with the calendar's week columns (same formula app.py uses)
 import analysis as A  # noqa: E402
 for name, frame in [("demo", A.load_demo())] + ([("real", I.load_files([exports[-1]])[0])] if exports else []):
     wk, z, _ = A.calendar_grid(frame)
-    check(f"calendar weeks line up ({name})", len(A.calendar_week_starts(frame)) == len(wk) == len(z[0]))
+    d0, d1 = frame["day"].min(), frame["day"].max()
+    starts = pd.date_range(d0 - pd.Timedelta(days=d0.weekday()), d1, freq="7D")
+    check(f"calendar weeks line up ({name})", len(starts) == len(wk) == len(z[0]))
 
 # 4. the app runs headless on demo data and on the local export
 at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
