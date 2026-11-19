@@ -1,4 +1,4 @@
-"""Lift Brain: turn a Lyfta export into clear answers about your training.
+"""Repwise: turn a Lyfta export into clear answers about your training.
 
 Run:  python -m streamlit run app.py
 """
@@ -12,7 +12,7 @@ import streamlit as st
 
 import analysis as A
 
-st.set_page_config(page_title="Lift Brain", page_icon="🏋️", layout="wide")
+st.set_page_config(page_title="Repwise", page_icon="🏋️", layout="wide")
 
 # ------------------------------------------------------------------ look & feel
 INK, INK2, MUTED = "#f0efec", "#c3c2b7", "#8d8c85"
@@ -122,7 +122,7 @@ here = Path(__file__).parent
 auto = sorted(here.glob("export*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
 
 with st.sidebar:
-    st.markdown("### 🏋️ Lift Brain")
+    st.markdown("### 🏋️ Repwise")
     st.caption("Your Lyfta data, explained.")
     st.markdown("**1. Your data**")
     up = st.file_uploader("Lyfta CSV export", type="csv", label_visibility="collapsed")
@@ -152,7 +152,7 @@ else:
 # ------------------------------------------------------------------ onboarding (no data yet)
 def onboarding():
     st.markdown(
-        '<div class="hero"><div class="kicker">Lift Brain</div><h1>Know if your training is working.</h1>'
+        '<div class="hero"><div class="kicker">Repwise</div><h1>Know if your training is working.</h1>'
         "<p>Upload your Lyfta export and get plain-English answers: are you getting stronger, which lifts "
         "have stalled, are you training every muscle enough, and what weight to try next session.</p></div>",
         unsafe_allow_html=True,
@@ -160,7 +160,7 @@ def onboarding():
     st.markdown("#### Get started in 3 steps")
     for n, t, d in [
         ("1", "Export your data from Lyfta", "In the Lyfta app open Settings → Export data and choose CSV. Save the file to your computer."),
-        ("2", "Upload it in the sidebar", "Drag the CSV into the box on the left. Nothing leaves your computer when you run the app locally."),
+        ("2", "Upload it in the sidebar", "Drag the CSV into the box on the left. Repwise does not save your file. It is only used to draw your charts for this visit."),
         ("3", "Read the tabs left to right", "Overview tells you the big picture, then dig into each lift, your plateaus, and next session's targets."),
     ]:
         st.markdown(f'<div class="step"><div class="n">{n}</div><div><b>{t}</b><p>{d}</p></div></div>', unsafe_allow_html=True)
@@ -185,7 +185,7 @@ n_stalled = int((plateaus["Status"] == "Stalled").sum()) if len(plateaus) else 0
 prs = A.pr_timeline(df)
 
 st.markdown(
-    f'<div class="hero"><div class="kicker">Lift Brain</div><h1>Your training, explained.</h1>'
+    f'<div class="hero"><div class="kicker">Repwise</div><h1>Your training, explained.</h1>'
     f"<p>{len(sess)} workouts logged from {first_day:%d %b %Y} to {last_day:%d %b %Y}. "
     f"Read the tabs left to right. Each one starts with what it shows and ends with what to do.</p></div>",
     unsafe_allow_html=True,

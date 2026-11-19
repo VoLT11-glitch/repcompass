@@ -1,4 +1,4 @@
-# Lift Brain
+# Repwise
 
 Analytics for your Lyfta workout export. Everything runs on your own computer.
 
