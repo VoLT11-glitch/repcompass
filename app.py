@@ -84,6 +84,55 @@ div[data-testid="stPlotlyChart"] { background: #1c1c1b; border: 1px solid #2c2c2
 .plan td.n { color: #a9a89f; font-size: .82rem; }
 button[data-baseweb="tab"] { font-weight: 600; font-size: .95rem; }
 div[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+details.guide-m { display: none; }
+
+/* ---------------- phones ---------------- */
+@media (max-width: 640px) {
+  .block-container { padding-left: 1rem; padding-right: 1rem; }
+  header[data-testid="stHeader"] { background: rgba(18,18,17,.94); backdrop-filter: blur(8px); border-bottom: 1px solid #262624; }
+  .hero h1 { font-size: 2rem; }
+  .hero p { font-size: .95rem; }
+
+  /* headline numbers: 2 x 2 instead of 4 stacked cards */
+  .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+  .kpi { padding: 12px 14px; border-radius: 14px; }
+  .kpi .v { font-size: 1.5rem; }
+  .kpi .l { font-size: .66rem; }
+  .kpi .s { font-size: .76rem; }
+
+  /* the three guide boxes fold into one tappable line */
+  .guide { display: none; }
+  details.guide-m { display: block; background: #171716; border: 1px solid #262624; border-radius: 12px;
+                    padding: 10px 14px; margin: 8px 0 12px 0; font-size: .86rem; color: #c3c2b7; }
+  details.guide-m summary { color: #6da7ec; font-weight: 600; font-size: .8rem; cursor: pointer; }
+  details.guide-m b { display: block; color: #6da7ec; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; margin: 10px 0 2px 0; }
+
+  /* all tabs visible as wrapping chips instead of a hidden side-scroll */
+  [data-testid="stTabs"] [role="tablist"] { flex-wrap: wrap; gap: 6px; overflow: visible !important;
+                                            border: 0 !important; box-shadow: none !important; padding-bottom: 4px; }
+  [data-testid="stTab"] { flex: 0 0 auto; padding: 5px 11px !important; margin: 0 !important; height: auto; min-height: 0;
+                          border: 1px solid #2c2c2a !important; border-radius: 999px; background: #1c1c1b; box-shadow: none !important; }
+  [data-testid="stTab"]::after, [data-testid="stTab"]::before,
+  [data-testid="stTabs"] [role="tablist"]::after, [data-testid="stTabs"] [role="tablist"]::before { display: none !important; }
+  [data-testid="stTab"][aria-selected="true"] { background: #1f3a5f; border-color: #3987e5 !important; }
+  [data-testid="stTab"] p { font-size: .8rem !important; }
+  [data-testid="stTab"][aria-selected="true"] p { color: #fff !important; }
+  [data-testid="stTabsScrollRight"], [data-testid="stTabsScrollLeft"] { display: none !important; }
+
+  /* next-workout table becomes one card per lift */
+  .plan, .plan tbody { display: block; }
+  .plan tr:first-child { display: none; }
+  .plan tr { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: baseline;
+             padding: 12px 0; border-bottom: 1px solid #232321; }
+  .plan td { display: block; padding: 0; border: 0; }
+  .plan td.l { order: 1; grid-column: 1 / -1; font-weight: 700; margin-bottom: 4px; }
+  .plan td.t { order: 2; font-size: 1.35rem; }
+  .plan td.s { order: 3; color: #a9a89f; font-size: .85rem; }
+  .plan td.s::after { content: " sets"; }
+  .plan td.n { order: 4; grid-column: 1 / -1; margin-top: 4px; }
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -96,16 +145,21 @@ def section(title: str, what: str):
 
 def guide(read: str, good: str, act: str):
     """Three small boxes under a heading: how to read it, what good looks like, what to do."""
+    # desktop shows three boxes; phones get the same text folded behind one tappable line (CSS picks which)
     st.markdown(
         f'<div class="guide"><div><b>How to read it</b>{read}</div>'
-        f'<div><b>What good looks like</b>{good}</div><div><b>What to do</b>{act}</div></div>',
+        f'<div><b>What good looks like</b>{good}</div><div><b>What to do</b>{act}</div></div>'
+        f'<details class="guide-m"><summary>How to read this</summary><b>How to read it</b>{read}'
+        f'<b>What good looks like</b>{good}<b>What to do</b>{act}</details>',
         unsafe_allow_html=True,
     )
 
 
-def kpi(col, label, value, sub=""):
-    col.markdown(f'<div class="kpi"><div class="l">{label}</div><div class="v">{value}</div>'
-                 f'<div class="s">{sub}</div></div>', unsafe_allow_html=True)
+def kpi_row(items):
+    """A row of headline numbers: 4 across on desktop, 2 x 2 on phones. items = [(label, value, sub), ...]"""
+    cards = "".join(f'<div class="kpi"><div class="l">{label}</div><div class="v">{value}</div>'
+                    f'<div class="s">{sub}</div></div>' for label, value, sub in items)
+    st.markdown(f'<div class="kpis">{cards}</div>', unsafe_allow_html=True)
 
 
 def chip(kind, text):
@@ -375,11 +429,12 @@ t_over, t_lift, t_plat, t_next, t_str, t_cmp, t_coach, t_bw, t_data, t_guide = s
 
 # ================================================================== OVERVIEW
 with t_over:
-    c = st.columns(4)
-    kpi(c[0], "Workouts logged", f"{len(sess)}", f"about {len(sess) / span_weeks:.1f} per week overall")
-    kpi(c[1], "Last 4 weeks", f"{len(l28)}", "workouts · aim for 3-5" if len(l28) < 12 else "workouts, solid")
-    kpi(c[2], "Stalled lifts", f"{n_stalled}", "need a change of plan" if n_stalled else "nothing stuck")
-    kpi(c[3], "PRs set", f"{len(prs)}", "new best estimated 1RMs")
+    kpi_row([
+        ("Workouts logged", f"{len(sess)}", f"about {len(sess) / span_weeks:.1f} per week overall"),
+        ("Last 4 weeks", f"{len(l28)}", "workouts · aim for 3-5" if len(l28) < 12 else "workouts, solid"),
+        ("Stalled lifts", f"{n_stalled}", "need a change of plan" if n_stalled else "nothing stuck"),
+        ("PRs set", f"{len(prs)}", "new best estimated 1RMs"),
+    ])
 
     # ---- calendar
     section("Training calendar",
@@ -388,14 +443,28 @@ with t_over:
           "A regular pattern with few empty weeks. Consistency drives results more than any program.",
           "Look for long empty stretches. Those gaps are your biggest lever, bigger than changing exercises.")
     weeks, z, txt = A.calendar_grid(df)
+    week_starts = A.calendar_week_starts(df)
+    week_keys = [f"{d:%Y-%m-%d}" for d in week_starts]  # unique even across years
     fig = go.Figure(go.Heatmap(
-        z=z, x=weeks, y=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], text=txt,
+        z=z, x=week_keys, y=["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"], text=txt,
         hovertemplate="%{text}<extra></extra>", xgap=3, ygap=3, hoverongaps=True,
         colorscale=[[0, "#184f95"], [1, "#9ec5f4"]], showscale=False))
     style(fig, 310, legend=False)
     fig.update_layout(plot_bgcolor="#242423", margin=dict(l=12, r=16, t=28, b=40))
     fig.update_yaxes(autorange="reversed", showgrid=False, type="category", tickfont=dict(color=INK2, size=11), showticklabels=True)
-    fig.update_xaxes(type="category", tickangle=0, nticks=14, side="top")
+    # one label per month (at its first week) so the dates never pile up on narrow screens
+    multi_year = week_starts[0].year != week_starts[-1].year
+    month_ticks, last_m, last_i = [], None, -99
+    for i, (key, d0) in enumerate(zip(week_keys, week_starts)):
+        m = (d0 + pd.Timedelta(days=6)).to_period("M")  # the month this week mostly ends in
+        if m != last_m:
+            label = m.strftime("%b %y") if (multi_year and m.month == 1) else m.strftime("%b")
+            if month_ticks and i - last_i < 3:  # too close to the previous label: keep the newer month
+                month_ticks.pop()
+            month_ticks.append((key, label))
+            last_m, last_i = m, i
+    fig.update_xaxes(type="category", tickangle=0, side="top",
+                     tickvals=[k for k, _ in month_ticks], ticktext=[t for _, t in month_ticks])
     show(fig)
 
     # ---- balance
@@ -416,7 +485,7 @@ with t_over:
     style(fig, 330)
     fig.update_layout(barmode="stack", showlegend=False)
     fig.update_yaxes(autorange="reversed", gridcolor="rgba(0,0,0,0)")
-    fig.update_xaxes(title="Hard sets per week (average of last 4 weeks)", gridcolor=GRID, showgrid=True, range=[0, max(24, bal["sets_per_week"].max() * 1.15)])
+    fig.update_xaxes(title="Hard sets per week", gridcolor=GRID, showgrid=True, range=[0, max(24, bal["sets_per_week"].max() * 1.15)])
     show(fig)
     labels = " &nbsp; ".join(
         f"<b>{r['muscle']}</b> " + chip({"Low": "warn", "In range": "good", "High": "info"}[r["status"]], r["status"])
@@ -451,7 +520,11 @@ with t_over:
                     else "only 1 session in the last 4 weeks")
             lines.append(f'{chip("crit" if r["Status"] == "Dropped" else "warn", r["Status"])} '
                          f'<b>{escape(r["Exercise"])}</b> <span style="color:#a9a89f">· {note}</span>')
-        st.markdown('<div style="line-height:2.2">' + "<br>".join(lines) + "</div>", unsafe_allow_html=True)
+        # the list can run to 20+ lifts; show the first few and fold the rest
+        st.markdown('<div style="line-height:2.2">' + "<br>".join(lines[:5]) + "</div>", unsafe_allow_html=True)
+        if len(lines) > 5:
+            with st.expander(f"Show {len(lines) - 5} more dropped or rare lifts"):
+                st.markdown('<div style="line-height:2.2">' + "<br>".join(lines[5:]) + "</div>", unsafe_allow_html=True)
     if len(lv):
         with st.expander("All lifts: hard sets per week (last 4 weeks)"):
             st.dataframe(lv.style.format({"Sets / week": "{:.1f}"}), width="stretch", hide_index=True)
@@ -488,13 +561,14 @@ with t_lift:
           "Flat for 4+ weeks? See the Plateaus tab for what to change.")
     pick = st.selectbox("Exercise", list(lifts.index), format_func=lambda k: f"{k.strip()}  ·  {lifts[k]} sessions")
     e = A.e1rm_with_prs(df, pick)
-    c = st.columns(4)
     best, cur = e["e1rm"].max(), e["e1rm"].iloc[-1]
     chg = (cur / e["e1rm"].iloc[0] - 1) * 100 if len(e) > 1 else 0
-    kpi(c[0], "Best e1RM", f"{best:.0f} {unit}", "your strongest estimated max")
-    kpi(c[1], "Latest e1RM", f"{cur:.0f} {unit}", f"{e['day'].iloc[-1]:%d %b %Y}")
-    kpi(c[2], "Change since first", f"{chg:+.0f}%", f"over {len(e)} sessions")
-    kpi(c[3], "PRs on this lift", f"{int(e['is_pr'].sum())}", "times you beat your best")
+    kpi_row([
+        ("Best e1RM", f"{best:.0f} {unit}", "your strongest estimated max"),
+        ("Latest e1RM", f"{cur:.0f} {unit}", f"{e['day'].iloc[-1]:%d %b %Y}"),
+        ("Change since first", f"{chg:+.0f}%", f"over {len(e)} sessions"),
+        ("PRs on this lift", f"{int(e['is_pr'].sum())}", "times you beat your best"),
+    ])
 
     fig = go.Figure()
     fig.add_scatter(x=e["day"], y=e["e1rm"], name="Estimated 1RM", mode="lines+markers",
@@ -610,7 +684,7 @@ with t_plat:
             text=[f"{v:+.0f}%" for v in ch["Change %"]], textposition="outside", textfont=dict(color=INK2)))
         style(fig, max(260, 34 * len(ch) + 80), legend=False)
         fig.update_yaxes(autorange="reversed", gridcolor="rgba(0,0,0,0)")
-        fig.update_xaxes(title="Change in estimated 1RM (%)", showgrid=True, gridcolor=GRID,
+        fig.update_xaxes(title="e1RM change (%)", showgrid=True, gridcolor=GRID,
                          range=[min(0, ch["Change %"].min()) * 1.9 - 10, ch["Change %"].max() * 1.22 + 5])
         show(fig)
 
@@ -647,8 +721,8 @@ with t_next:
             df, int(low), int(high), float(step), plateaus, title=pick_title)
         if len(plan["table"]):
             body = "".join(
-                f'<tr><td>{escape(r["Exercise"])}{" " + chip("crit", "Stalled") if r["Stalled"] else ""}</td>'
-                f'<td>{r["Sets"]}</td><td class="t">{escape(r["Target"])}</td><td class="n">{escape(r["Note"])}</td></tr>'
+                f'<tr><td class="l">{escape(r["Exercise"])}{" " + chip("crit", "Stalled") if r["Stalled"] else ""}</td>'
+                f'<td class="s">{r["Sets"]}</td><td class="t">{escape(r["Target"])}</td><td class="n">{escape(r["Note"])}</td></tr>'
                 for _, r in plan["table"].iterrows())
             st.markdown(
                 f'<div class="card"><h4>{escape(plan["title"])} · next workout</h4>'
@@ -897,11 +971,12 @@ with t_cmp:
             return f"{fmt.format(b_[key] - a_[key])} vs A ({a_[key]:,.0f})" if key != "per_week" else \
                 f"{b_[key] - a_[key]:+.1f} vs A ({a_[key]:.1f})"
 
-        k = st.columns(4)
-        kpi(k[0], "Workouts", f"{b_['sessions']}", delta("sessions"))
-        kpi(k[1], "Hard sets", f"{b_['hard_sets']}", delta("hard_sets"))
-        kpi(k[2], f"Volume ({unit})", f"{b_['volume']:,.0f}", delta("volume"))
-        kpi(k[3], "New PRs", f"{b_['prs']}", delta("prs"))
+        kpi_row([
+            ("Workouts", f"{b_['sessions']}", delta("sessions")),
+            ("Hard sets", f"{b_['hard_sets']}", delta("hard_sets")),
+            (f"Volume ({unit})", f"{b_['volume']:,.0f}", delta("volume")),
+            ("New PRs", f"{b_['prs']}", delta("prs")),
+        ])
         if cmp_["muscles"].shape[0]:
             section("Hard sets per muscle", "Grey is period A, blue is period B.")
             mu = cmp_["muscles"]
@@ -925,7 +1000,7 @@ with t_cmp:
                 text=[f"{v:+.1f}%" for v in lf["Change %"]], textposition="outside", textfont=dict(color=INK2)))
             style(fig, max(240, 34 * len(lf) + 80), legend=False)
             fig.update_yaxes(autorange="reversed", gridcolor="rgba(0,0,0,0)")
-            fig.update_xaxes(title="Change in estimated 1RM (%)", showgrid=True, gridcolor=GRID,
+            fig.update_xaxes(title="e1RM change (%)", showgrid=True, gridcolor=GRID,
                              range=[min(0, lf["Change %"].min()) * 1.9 - 4, lf["Change %"].max() * 1.25 + 4])
             show(fig)
         else:

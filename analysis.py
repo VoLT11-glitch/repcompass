@@ -271,6 +271,13 @@ def muscle_balance(df: pd.DataFrame, days: int = 28, low: int = 10, high: int = 
     return out
 
 
+def calendar_week_starts(df: pd.DataFrame) -> list:
+    """Monday of every week shown in calendar_grid, same order as its columns."""
+    first, last = df["day"].min(), df["day"].max()
+    start = first - pd.Timedelta(days=first.weekday())
+    return list(pd.date_range(start, last, freq="7D"))
+
+
 def calendar_grid(df: pd.DataFrame):
     """Weeks x weekdays grid of session volume (kg x reps), plus hover text."""
     w = working_sets(df)
