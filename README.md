@@ -1,4 +1,4 @@
-# Repwise
+# Repcompass
 
 Analytics for your Lyfta workout export. Everything runs on your own computer.
 
