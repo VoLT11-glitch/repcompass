@@ -5,6 +5,10 @@ are you training every muscle enough, and what to lift next session.
 
 Works with **Lyfta**, **Hevy** and **Strong** CSV exports. Upload several files to combine them.
 
+**Connect Lyfta directly:** paste your free personal API key from https://my.lyfta.app/community/api in the sidebar and the app pulls your workouts, no CSV needed.
+
+**Remember my data on this device:** your combined history and settings are kept in your own browser (localStorage), so next visit loads by itself. Nothing is stored on a server. *Forget this device* in Data & settings wipes it.
+
 ## What it does
 
 - Overview: training calendar, muscle balance, lift-by-lift weekly volume, neglected lifts
@@ -33,5 +37,8 @@ No data yet? Switch on **Use demo data**.
 - `features.py` deload, strength levels, goals, comparisons, session plan, weekly review
 - `importers.py` Lyfta / Hevy / Strong readers and file merging
 - `report.py` share card (PNG) and monthly report (PDF)
+- `lyfta_api.py` Lyfta API sync (personal key)
+- `browser_store.py` saves history and settings in the browser
+- `tests/smoke_test.py` run `python tests/smoke_test.py` before every push
 
-Your file is processed in memory and is not saved by the app.
+Your file is processed in memory and is never saved on a server. If you choose, it is remembered in your own browser only.

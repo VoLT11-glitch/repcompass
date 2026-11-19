@@ -16,6 +16,8 @@ import analysis as A
 import features as F
 import importers as I
 import report as R
+import browser_store as BS
+import lyfta_api as L
 
 st.set_page_config(page_title="Repcompass", page_icon="🏋️", layout="wide")
 
@@ -131,7 +133,83 @@ def show(fig):
 
 # ------------------------------------------------------------------ sidebar & data
 here = Path(__file__).parent
-auto = sorted(here.glob("export*.csv"), key=lambda p: p.stat().st_mtime, reverse=True)
+auto = sorted([*here.glob("export*.csv"), *(here.parent / "data").glob("export*.csv")],
+              key=lambda p: p.stat().st_mtime, reverse=True)
+store_slot = st.sidebar.empty()  # invisible browser-storage component is mounted here at the end of the run
+
+
+def apply_setup(s: dict):
+    """Restore goals, muscle fixes and settings. Must run before the widgets are created."""
+    if not isinstance(s, dict):
+        return
+    if isinstance(s.get("goals"), list):
+        st.session_state["goals"] = [g for g in s["goals"] if isinstance(g, dict) and {"exercise", "target"} <= set(g)]
+    if isinstance(s.get("muscle_overrides"), dict):
+        st.session_state["muscle_overrides"] = {k: v for k, v in s["muscle_overrides"].items() if v in F.MUSCLE_CHOICES}
+    if isinstance(s.get("bodyweight"), (int, float)):
+        st.session_state["bw"] = float(s["bodyweight"])
+    if s.get("sex") in ("Male", "Female"):
+        st.session_state["sex"] = s["sex"]
+    if s.get("unit") in ("kg", "lb"):
+        st.session_state["unit"] = s["unit"]
+    for k, lo, hi in (("low", 3, 20), ("high", 4, 30)):
+        if isinstance(s.get(k), int) and lo <= s[k] <= hi:
+            st.session_state[k] = s[k]
+    if isinstance(s.get("step"), (int, float)) and 0.5 <= s["step"] <= 20:
+        st.session_state["step"] = float(s["step"])
+
+
+def current_setup() -> dict:
+    return {"app": "repcompass", "version": 2, "goals": st.session_state.get("goals", []),
+            "muscle_overrides": st.session_state.get("muscle_overrides", {}),
+            "bodyweight": st.session_state.get("bw"), "sex": st.session_state.get("sex"),
+            "unit": st.session_state.get("unit"), "low": st.session_state.get("low"),
+            "high": st.session_state.get("high"), "step": st.session_state.get("step")}
+
+
+def forget_device():
+    BS.clear_all()
+    BS.put("optout", "1")
+    st.session_state["remember"] = False
+    st.session_state["remember_key"] = False
+    st.session_state["lyfta_key"] = ""
+    st.session_state.pop("lyfta_sync", None)
+
+
+def run_sync(key: str):
+    try:
+        with st.spinner("Syncing your Lyfta workouts..."):
+            ws = L.fetch_workouts(key)
+            f, info = L.to_frame(ws, getattr(st.context, "timezone", None))
+        st.session_state["lyfta_sync"] = (f, info)
+        st.session_state["lyfta_sync_at"] = pd.Timestamp.now().strftime("%d %b %H:%M")
+        st.session_state.pop("lyfta_err", None)
+    except L.LyftaError as exc:
+        st.session_state["lyfta_err"] = str(exc)
+
+
+# restore what this browser saved last time (once per session, before any widget exists)
+saved = BS.items()
+if saved is not None and not st.session_state.get("_restored"):
+    st.session_state["_restored"] = True
+    try:
+        apply_setup(json.loads(saved.get("setup") or "{}"))
+    except (ValueError, TypeError):
+        pass
+    st.session_state["remember"] = saved.get("optout") != "1"
+    if saved.get("lyfta_key"):
+        st.session_state["lyfta_key"] = saved["lyfta_key"]
+        st.session_state["remember_key"] = True
+st.session_state.setdefault("remember", True)
+st.session_state.setdefault("unit", "kg")
+st.session_state.setdefault("low", 8)
+st.session_state.setdefault("high", 12)
+st.session_state.setdefault("step", 2.5 if st.session_state["unit"] == "kg" else 5.0)
+
+
+def _unit_changed():
+    st.session_state["step"] = 2.5 if st.session_state["unit"] == "kg" else 5.0
+
 
 with st.sidebar:
     st.markdown("### 🏋️ Repcompass")
@@ -139,38 +217,93 @@ with st.sidebar:
     st.markdown("**1. Your data**")
     ups = st.file_uploader("Workout export (CSV)", type="csv", accept_multiple_files=True, label_visibility="collapsed",
                            help="Lyfta, Hevy or Strong CSV. Add several files to combine them. A workout that appears in more than one file is only counted once.")
+    with st.expander("Connect Lyfta directly", icon=":material/sync:",
+                     expanded=bool(st.session_state.get("lyfta_err"))):
+        st.caption(f"Skip the CSV. Get your free personal key at [my.lyfta.app/community/api]({L.KEY_PAGE}) "
+                   "and paste it here. It only reads your workouts.")
+        lyfta_key = st.text_input("Lyfta API key", type="password", key="lyfta_key")
+        st.checkbox("Remember key on this device", key="remember_key",
+                    help="Saved in this browser only, so the app syncs by itself next visit. Leave off on a shared computer.")
+        if st.button("Sync now", type="primary", width="stretch", disabled=not lyfta_key):
+            run_sync(lyfta_key)
+        if st.session_state.get("lyfta_err"):
+            st.error(st.session_state["lyfta_err"])
+        elif st.session_state.get("lyfta_sync"):
+            _f, _i = st.session_state["lyfta_sync"]
+            st.caption(f"Synced {_i['workouts']} workouts at {st.session_state.get('lyfta_sync_at')}.")
     use_demo = st.toggle("Use demo data", value=False, help="Fake 30-session history so you can explore the app.")
-    if not ups and not use_demo and auto:
-        st.caption(f"Using the newest file in this folder: `{auto[0].name}`")
+    st.toggle("Remember my data on this device", key="remember",
+              help="Keeps your combined history and settings in this browser (not on any server), so next visit "
+                   "you do not need to upload again. New uploads are added on top. Turn off on a shared computer.")
     st.markdown("**2. Units in your export**")
-    unit = st.radio("Unit", ["kg", "lb"], horizontal=True, label_visibility="collapsed",
+    unit = st.radio("Unit", ["kg", "lb"], horizontal=True, label_visibility="collapsed", key="unit", on_change=_unit_changed,
                     help="Lyfta exports numbers in whatever unit your app is set to. Pick the same one here.")
     st.markdown("**3. How you progress**")
-    low = st.number_input("Rep range: low", 3, 20, 8, help="Below this many reps, hold the weight and build reps first.")
-    high = st.number_input("Rep range: high", 4, 30, 12, help="Hit this on every set and the app tells you to add weight.")
-    step = st.number_input(f"Weight jump ({unit})", 0.5, 20.0, 2.5 if unit == "kg" else 5.0, step=0.5,
+    low = st.number_input("Rep range: low", 3, 20, key="low", help="Below this many reps, hold the weight and build reps first.")
+    high = st.number_input("Rep range: high", 4, 30, key="high", help="Hit this on every set and the app tells you to add weight.")
+    step = st.number_input(f"Weight jump ({unit})", 0.5, 20.0, step=0.5, key="step",
                            help="The smallest plate jump you use.")
     st.caption("Your export has no effort score (RPE), so everything here is based on weight and reps only.")
 
-raw_export, infos, load_err = None, [], None
+remember = st.session_state["remember"]
+# a remembered key syncs once per visit by itself
+if (saved is not None and lyfta_key and st.session_state.get("remember_key")
+        and not st.session_state.get("_auto_synced") and not use_demo):
+    st.session_state["_auto_synced"] = True
+    run_sync(lyfta_key)
+
+raw_export, infos, load_err, saved_rows = None, [], None, 0
 if use_demo:
     df = A.load_demo()
-elif ups or auto:
+else:
+    frames, infos = [], []
+    hist = I.unpack_history(saved["history"]) if (remember and saved and saved.get("history")) else None
+    if hist is not None and len(hist):
+        saved_rows = len(hist)
+        frames.append(hist)
+        infos.append({"source": "Saved on this device", "unit": None, "rows": len(hist), "name": "Saved history"})
+    synced = st.session_state.get("lyfta_sync")
     try:
-        df, raw_export, infos = I.load_files(list(ups) if ups else [auto[0]])
+        if not ups and not synced and auto:
+            f, info = I.read_export(auto[0])
+            info["name"] = auto[0].name
+            frames.append(f)
+            infos.append(info)
+        if synced:
+            frames.append(synced[0])
+            infos.append(synced[1])
+        for u in ups or []:
+            f, info = I.read_export(u)
+            info["name"] = u.name
+            frames.append(f)
+            infos.append(info)
+        df, raw_export, infos = I.combine(frames, infos) if frames else (None, None, [])
     except Exception as exc:  # unreadable or unknown file
         df, load_err = None, str(exc)
-else:
-    df = None
+    # keep the combined history in this browser when anything new came in
+    if remember and raw_export is not None and len(frames) > (1 if saved_rows else 0):
+        blob = I.pack_history(raw_export)
+        if len(blob) < 4_000_000:
+            BS.put("history", blob)
+    if not remember and saved and saved.get("history"):
+        BS.put("history", None)
+    BS.put("optout", None if remember else "1")
+    BS.put("lyfta_key", lyfta_key if (st.session_state.get("remember_key") and lyfta_key) else None)
 
 with st.sidebar:
     if load_err:
         st.error(load_err)
+    if not ups and not use_demo and auto and not st.session_state.get("lyfta_sync"):
+        st.caption(f"Using the newest local file: `{auto[0].name}`")
+    if saved_rows and not use_demo:
+        st.caption(f"Loaded your saved history from this device ({saved_rows} sets). Upload or sync to add newer workouts.")
     for info in infos:
-        if info["source"] != "Lyfta":
+        if info["source"] not in ("Lyfta", "Lyfta (synced)", "Saved on this device"):
             st.caption(f"Read **{info['name']}** as a {info['source']} export ({info['rows']} rows).")
         if info.get("unit") and info["unit"] != unit:
             st.warning(f"This {info['source']} export is in {info['unit']}. Switch the unit above to {info['unit']}.")
+        if info.get("unknown_set_types"):
+            st.caption(f"Lyfta sent set types Repcompass does not know yet ({', '.join(info['unknown_set_types'])}). They are counted as normal sets.")
 
 
 # ------------------------------------------------------------------ onboarding (no data yet)
@@ -183,16 +316,32 @@ def onboarding():
     )
     st.markdown("#### Get started in 3 steps")
     for n, t, d in [
-        ("1", "Export your data from Lyfta", "In the Lyfta app open Settings → Export data and choose CSV. Save the file to your computer. Hevy and Strong CSV exports work too."),
-        ("2", "Upload it in the sidebar", "Drag the CSV into the box on the left. Repcompass does not save your file. It is only used to draw your charts for this visit."),
+        ("1", "Connect Lyfta, or export a CSV", "Fastest: open Connect Lyfta directly in the sidebar and paste your free API key "
+         "from my.lyfta.app/community/api. Or export a CSV from the Lyfta app (Settings → Export data). Hevy and Strong CSV exports work too."),
+        ("2", "Load it once", "Sync, or drag the CSV into the box on the left. With Remember my data on this device switched on, your "
+         "history stays in this browser and loads by itself next visit. It is never saved on a server."),
         ("3", "Read the tabs left to right", "Overview tells you the big picture, then dig into each lift, your plateaus, and next session's targets."),
     ]:
         st.markdown(f'<div class="step"><div class="n">{n}</div><div><b>{t}</b><p>{d}</p></div></div>', unsafe_allow_html=True)
     st.info("No export yet? Switch on **Use demo data** in the sidebar to explore with a fake training history.")
 
 
+def flush_store():
+    """Send queued browser-storage writes. Runs at the end of every full run."""
+    with store_slot:
+        err = BS.mount()
+    if err:
+        st.sidebar.caption(f"This browser would not save your data ({err}).")
+
+
 if df is None:
-    onboarding()
+    if saved is None and not use_demo and not ups and not load_err and "_store_checked" not in st.session_state:
+        # first run of a visit: the browser has not answered yet, so do not flash the welcome screen
+        st.session_state["_store_checked"] = True
+        st.caption("Checking this browser for saved data... If nothing loads, use the sidebar to upload or try demo data.")
+    else:
+        onboarding()
+    flush_store()
     st.stop()
 
 
@@ -610,9 +759,9 @@ with t_data:
                "combined history to keep. Workouts that appear in several files are only counted once, and the file listed last wins.")
 
     section("Save and restore your setup",
-            "Your goals, muscle fixes, bodyweight and standards table live in this browser tab only. Download them so you can restore them next visit.")
-    setup = {"app": "repcompass", "version": 1, "goals": st.session_state.get("goals", []),
-             "muscle_overrides": overrides, "bodyweight": st.session_state.get("bw"), "sex": st.session_state.get("sex")}
+            "Your goals, muscle fixes, bodyweight and settings. With Remember on they are kept in this browser automatically. "
+            "Download them to move to another device.")
+    setup = current_setup()
     cc = st.columns(2)
     cc[0].download_button("Download my setup (JSON)", json.dumps(setup, indent=2).encode("utf-8"),
                           file_name="repcompass_setup.json", mime="application/json")
@@ -622,13 +771,7 @@ with t_data:
             loaded = json.loads(up_setup.getvalue().decode("utf-8"))
             if loaded.get("app") != "repcompass":
                 raise ValueError("not a Repcompass setup file")
-            st.session_state["goals"] = [g for g in loaded.get("goals", []) if {"exercise", "target"} <= set(g)]
-            st.session_state["muscle_overrides"] = {k: v for k, v in loaded.get("muscle_overrides", {}).items()
-                                                    if v in F.MUSCLE_CHOICES}
-            if isinstance(loaded.get("bodyweight"), (int, float)):
-                st.session_state["bw"] = float(loaded["bodyweight"])
-            if loaded.get("sex") in ("Male", "Female"):
-                st.session_state["sex"] = loaded["sex"]
+            apply_setup(loaded)
             st.session_state["_setup_done"] = up_setup.file_id
             st.rerun()
         except Exception:
@@ -652,12 +795,15 @@ with t_data:
         st.session_state.pop("muscle_editor", None)
         st.rerun()
 
-    section("Why there are no accounts", "A quick note on how this app handles your data.")
+    section("Where your data lives", "A quick note on how this app handles your data.")
     st.markdown(
-        "- Your file is read in memory to draw the charts and is not saved by the app.\n"
-        "- Saved history across visits would need accounts and a database holding your training data. "
-        "Instead, download your combined history and setup above and keep them yourself.\n"
+        "- Uploads and Lyfta syncs are read in memory to draw the charts. Nothing is saved on a server and there are no accounts.\n"
+        "- With **Remember my data on this device** on, your combined history and settings are kept in this browser's "
+        "local storage. Another browser or device starts empty: sync again, or upload the history CSV you downloaded above.\n"
+        "- A Lyfta key is only sent to Lyfta, through this app, to read your workouts. It is kept in this browser only if you tick Remember key.\n"
         "- Running the app locally keeps everything on your own computer.")
+    st.button("Forget this device", on_click=forget_device, icon=":material/delete:",
+              help="Deletes the saved history, settings and Lyfta key from this browser.")
 
 
 # ================================================================== STRENGTH & GOALS
@@ -668,7 +814,8 @@ with t_str:
           "Intermediate or better on the lifts you train most.",
           "Chase the lift with the shortest bar first. Beginners often level up fastest on their weakest lift.")
     c1, c2 = st.columns(2)
-    bwt = c1.number_input(f"Your bodyweight ({unit})", 30.0, 300.0, 70.0 if unit == "kg" else 155.0, step=0.5, key="bw")
+    st.session_state.setdefault("bw", 70.0 if unit == "kg" else 155.0)  # no value= so a restored setup never clashes
+    bwt = c1.number_input(f"Your bodyweight ({unit})", 30.0, 300.0, step=0.5, key="bw")
     sex = c2.radio("Standards table", ["Male", "Female"], horizontal=True, key="sex",
                    help="The tables differ because average strength ratios differ. Pick the one you want to compare against.")
     levels = F.strength_levels(df, float(bwt), sex)
@@ -830,3 +977,11 @@ with t_coach:
     m_rep = st.selectbox("Month for the report", months, format_func=lambda m: m.strftime("%B %Y"), key="rep_month")
     pdf_bytes = _report_pdf(df, data_key, str(m_rep), unit, int(low), int(high), float(step), tuple(sorted(overrides.items())))
     st.download_button("Download report (PDF)", pdf_bytes, file_name=f"repcompass_report_{m_rep}.pdf", mime="application/pdf")
+
+
+# ------------------------------------------------------------------ remember settings on this device
+if remember and not use_demo:
+    BS.put("setup", json.dumps(current_setup(), sort_keys=True, default=str))
+elif not remember:
+    BS.put("setup", None)
+flush_store()

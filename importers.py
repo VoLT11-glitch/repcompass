@@ -160,6 +160,46 @@ def merge_frames(frames: list[pd.DataFrame]) -> pd.DataFrame:
     return all_[all_["_src"] == newest].drop(columns=["_src", "_key"]).reset_index(drop=True)
 
 
+def _day_title(f: pd.DataFrame) -> pd.Series:
+    return (pd.to_datetime(f["Date"], format="mixed", errors="coerce").dt.strftime("%Y-%m-%d") + "|"
+            + f["Title"].astype(str).str.strip().str.lower())
+
+
+def combine(frames: list[pd.DataFrame], infos: list[dict]) -> tuple[pd.DataFrame, pd.DataFrame, list[dict]]:
+    """Merge frames that are already in Lyfta layout, oldest source first (later ones win).
+    A frame whose info says 'synced' is the full account from Lyfta's API: its clock can differ from a CSV
+    export by the time-zone offset, so it also replaces any earlier rows with the same day and title."""
+    frames = [f for f in frames if f is not None and len(f)]
+    if not frames:
+        raise ValueError("No workouts found.")
+    out = []
+    for i, f in enumerate(frames):
+        later_synced = [g for g, inf in zip(frames[i + 1:], infos[i + 1:]) if "synced" in str(inf.get("source", ""))]
+        for g in later_synced:
+            f = f[~_day_title(f).isin(set(_day_title(g)))]
+        out.append(f)
+    raw = merge_frames([f for f in out if len(f)])
+    return A.prepare(raw), raw, infos
+
+
+def pack_history(raw: pd.DataFrame) -> str:
+    """Combined history -> short text (CSV, zlib, base64) for the browser's local storage."""
+    import base64
+    import zlib
+    return base64.b64encode(zlib.compress(raw.to_csv(index=False).encode("utf-8"), 9)).decode("ascii")
+
+
+def unpack_history(blob: str) -> pd.DataFrame | None:
+    import base64
+    import zlib
+    try:
+        text = zlib.decompress(base64.b64decode(blob)).decode("utf-8")
+        f, _ = read_export(io.StringIO(text))
+        return f
+    except Exception:
+        return None
+
+
 def load_files(sources: list) -> tuple[pd.DataFrame, pd.DataFrame, list[dict]]:
     """Read, merge and prepare one or more exports.
     Returns (prepared df, merged raw frame in Lyfta layout, per-file info)."""
