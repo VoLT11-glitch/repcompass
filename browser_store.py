@@ -24,6 +24,14 @@ export default function (component) {
   window.__repcompassDone = window.__repcompassDone || new Set()
   const done = window.__repcompassDone
   let err = null
+  // read first, so a write in the same run can never hide what was saved before
+  if (data.need) {
+    const items = {}
+    for (const n of data.names) {
+      try { items[n] = localStorage.getItem(P + n) } catch (e) { items[n] = null }
+    }
+    setTimeout(() => setStateValue("items", items), 0)
+  }
   for (const op of (data.ops || [])) {
     if (done.has(op.id)) continue
     done.add(op.id)
@@ -31,13 +39,6 @@ export default function (component) {
       if (op.value === null) localStorage.removeItem(P + op.name)
       else localStorage.setItem(P + op.name, op.value)
     } catch (e) { err = String(e) }
-  }
-  if (data.need) {
-    const items = {}
-    for (const n of data.names) {
-      try { items[n] = localStorage.getItem(P + n) } catch (e) { items[n] = null }
-    }
-    setTimeout(() => setStateValue("items", items), 0)
   }
   if (err) setTimeout(() => setStateValue("error", err), 0)
 }
@@ -73,7 +74,8 @@ def get(name: str):
 
 def put(name: str, value: str | None):
     """Queue a write (None deletes). Skipped when the value is unchanged."""
-    if ready() and get(name) == value:
+    # Before the browser has answered, the app only knows defaults; writing them would overwrite saved values.
+    if not ready() or get(name) == value:
         return
     st.session_state.setdefault(_QUEUE, {})[name] = {"id": uuid.uuid4().hex, "name": name, "value": value}
 
