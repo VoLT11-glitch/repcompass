@@ -86,6 +86,7 @@ button[data-baseweb="tab"] { font-weight: 600; font-size: .95rem; }
 div[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
 
 .kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+.st-key-rc_store { position: absolute !important; width: 0 !important; height: 0 !important; overflow: hidden; }
 details.guide-m { display: none; }
 
 /* ---------------- phones ---------------- */
@@ -189,7 +190,9 @@ def show(fig):
 here = Path(__file__).parent
 auto = sorted([*here.glob("export*.csv"), *(here.parent / "data").glob("export*.csv")],
               key=lambda p: p.stat().st_mtime, reverse=True)
-store_slot = st.sidebar.empty()  # invisible browser-storage component is mounted here at the end of the run
+# Invisible browser-storage component is mounted here at the end of the run. It must live in the main
+# area: on phones the sidebar starts closed and Streamlit does not render it, so the component would never run.
+store_slot = st.container(key="rc_store")
 
 
 def apply_setup(s: dict):
