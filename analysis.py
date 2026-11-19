@@ -46,12 +46,22 @@ def _parse_time(s) -> float:
     return np.nan
 
 
-def load(path_or_buffer) -> pd.DataFrame:
-    df = pd.read_csv(path_or_buffer, na_values=["null", ""])
+LYFTA_COLUMNS = ["Title", "Date", "Duration", "Exercise", "Superset id", "Weight", "Reps",
+                 "Set Type", "Distance", "Time"]
+
+
+def prepare(raw: pd.DataFrame) -> pd.DataFrame:
+    """Add the derived columns every analysis needs. `raw` must use Lyfta's column names."""
+    df = raw.copy()
     df.columns = [c.strip() for c in df.columns]
-    df["Date"] = pd.to_datetime(df["Date"])
+    for c in LYFTA_COLUMNS:  # imports from other apps may lack some optional columns
+        if c not in df.columns:
+            df[c] = np.nan
+    df["Date"] = pd.to_datetime(df["Date"], format="mixed", errors="coerce")
+    df = df.dropna(subset=["Date", "Exercise"]).reset_index(drop=True)
+    df["Title"] = df["Title"].fillna("Workout")
     df["day"] = df["Date"].dt.normalize()
-    df["session"] = df["Date"].dt.strftime("%Y-%m-%d %H:%M") + " | " + df["Title"].fillna("")
+    df["session"] = df["Date"].dt.strftime("%Y-%m-%d %H:%M") + " | " + df["Title"].astype(str)
     df["seconds"] = df["Time"].map(_parse_time)
     df["muscle"] = df["Exercise"].map(muscle_group)
     low = df["Exercise"].str.lower()
@@ -61,6 +71,10 @@ def load(path_or_buffer) -> pd.DataFrame:
     df["is_warmup"] = df["Set Type"].eq("WARMUP_SET")
     df["week"] = df["day"] - pd.to_timedelta(df["day"].dt.weekday, unit="D")
     return df
+
+
+def load(path_or_buffer) -> pd.DataFrame:
+    return prepare(pd.read_csv(path_or_buffer, na_values=["null", ""]))
 
 
 def epley(weight, reps):
