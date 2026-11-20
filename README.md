@@ -5,9 +5,9 @@ are you training every muscle enough, and what to lift next session.
 
 Works with **Lyfta**, **Hevy** and **Strong** CSV exports. Upload several files to combine them.
 
-**Connect Lyfta directly:** paste your free personal API key from https://my.lyfta.app/community/api in the sidebar and the app pulls your workouts, no CSV needed.
+**No API key needed:** export a CSV from your app once and drop it on the welcome screen. After that, open *Add workouts* and drop only the newest export; workouts that appear twice are counted once. (If you can log in at my.lyfta.app, an optional API-key sync sits under Settings → Advanced.)
 
-**Remember my data on this device:** your combined history and settings are kept in your own browser (localStorage), so next visit loads by itself. Nothing is stored on a server. *Forget this device* in Data & settings wipes it.
+**Remember my data on this device:** your combined history and settings are kept in your own browser (localStorage), so next visit loads by itself. Nothing is stored on a server. *Forget this device* in Settings wipes it.
 
 ## What it does
 
@@ -27,7 +27,7 @@ pip install -r requirements.txt
 python -m streamlit run app.py
 ```
 
-Drop a CSV named `export*.csv` next to `app.py` and it loads automatically, or use the sidebar uploader.
+Drop a CSV named `export*.csv` next to `app.py` and it loads automatically, or use the uploader on the welcome screen.
 No data yet? Switch on **Use demo data**.
 
 ## Files
@@ -37,7 +37,7 @@ No data yet? Switch on **Use demo data**.
 - `features.py` deload, strength levels, goals, comparisons, session plan, weekly review
 - `importers.py` Lyfta / Hevy / Strong readers and file merging
 - `report.py` share card (PNG) and monthly report (PDF)
-- `lyfta_api.py` Lyfta API sync (personal key)
+- `lyfta_api.py` optional Lyfta API sync (personal key, under Settings → Advanced)
 - `browser_store.py` saves history and settings in the browser
 - `tests/smoke_test.py` run `python tests/smoke_test.py` before every push
 

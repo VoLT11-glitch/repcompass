@@ -2,6 +2,8 @@
 
 Covers: demo data, the Lyfta API sandbox conversion, saving/restoring history, merging a sync with a CSV,
 and a real export if one sits in ../data or next to app.py."""
+import json
+import os
 import sys
 from pathlib import Path
 
@@ -68,10 +70,32 @@ for name, frame in [("demo", A.load_demo())] + ([("real", I.load_files([exports[
 at = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
 at.run()
 check("app runs with no data (or local export)", not at.exception)
-at.sidebar.toggle[0].set_value(True).run()
+at.session_state["demo"] = True
+at.run()
 check("app runs on demo data", not at.exception)
 if at.exception:
     print(at.exception)
 check("no Streamlit warnings", not [w for w in at.warning if "Session State" in str(w.value)])
+check("8 tabs", len(at.tabs) == 8)
+check("settings live in the Settings tab", [r for r in at.radio if r.key == "unit"] and [n for n in at.number_input if n.key == "low"])
+charts = at.get("plotly_chart")
+figs = [json.loads(c.proto.spec) for c in charts]
+check("charts never zoom on drag", figs and all(f["layout"].get("dragmode") is False
+                                                 and f["layout"]["xaxis"].get("fixedrange") for f in figs))
+low_box = [n for n in at.number_input if n.key == "low"][0]
+low_box.set_value(6).run()
+check("changing a setting keeps it", not at.exception and at.session_state["low"] == 6)
+
+# 5. a first-time visitor (no local file) gets the welcome screen, and the demo button works
+os.environ["REPCOMPASS_NO_LOCAL"] = "1"
+w = AppTest.from_file(str(ROOT / "app.py"), default_timeout=120)
+w.run()
+w.run()  # second run: past the "checking this browser" step
+labels = [b.label for b in w.button]
+check("welcome screen shows the demo button", "Try it with demo data" in labels and not w.exception)
+check("welcome screen has no API key field", not [t for t in w.text_input if t.key == "lyfta_key"])
+[b for b in w.button if b.label == "Try it with demo data"][0].click().run()
+check("demo button opens the dashboard", not w.exception and len(w.tabs) == 8)
+del os.environ["REPCOMPASS_NO_LOCAL"]
 
 sys.exit(1 if check.failed else 0)

@@ -3,6 +3,7 @@
 Run:  python -m streamlit run app.py
 """
 import json
+import os
 from datetime import date, timedelta
 from html import escape
 from pathlib import Path
@@ -19,106 +20,204 @@ import report as R
 import browser_store as BS
 import lyfta_api as L
 
-st.set_page_config(page_title="Repcompass", page_icon="🏋️", layout="wide")
+st.set_page_config(page_title="Repcompass", page_icon="🏋️", layout="wide", initial_sidebar_state="collapsed")
 
 # ------------------------------------------------------------------ look & feel
-INK, INK2, MUTED = "#f0efec", "#c3c2b7", "#8d8c85"
-SURFACE, CARD, GRID = "#1a1a19", "#1c1c1b", "#2c2c2a"
+INK, INK2, MUTED = "#f2f1ec", "#c4c3b8", "#8b8a82"
+SURFACE, CARD, GRID = "#171716", "#1b1b1a", "#2a2a27"
 BLUE, ORANGE, AQUA = A.SERIES[0], A.SERIES[1], A.SERIES[2]
 GOOD, WARN, CRIT = "#0ca30c", "#fab219", "#d03b3b"
 
 st.markdown(
     """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
-html, body, [class*="css"], .stApp { font-family: 'Inter', system-ui, sans-serif; }
-.stApp { background: radial-gradient(1200px 500px at 8% -10%, #1b2a42 0%, rgba(18,18,17,0) 60%), #121211; }
-.block-container { padding-top: 2.2rem; max-width: 1280px; }
+:root { --bg:#0f0f0e; --s1:#171716; --s2:#1d1d1b; --line:#2a2a27; --line2:#353531;
+        --ink:#f2f1ec; --ink2:#c4c3b8; --muted:#8b8a82; --acc:#4b93ec; --acc-soft:rgba(57,135,229,.14);
+        --good:#4cc76a; --warn:#f2b33d; --crit:#ff7b7b; --r:16px; --ease:cubic-bezier(.2,.7,.2,1); }
+.stApp { background: radial-gradient(900px 420px at 0% -8%, rgba(57,135,229,.16) 0%, rgba(15,15,14,0) 62%), var(--bg); }
+.block-container { padding-top: 1.6rem; max-width: 1240px; }
 header[data-testid="stHeader"] { background: transparent; }
-h1, h2, h3 { letter-spacing: -0.02em; }
-section[data-testid="stSidebar"] { background: #161615; border-right: 1px solid #262624; }
+h1, h2, h3, h4 { letter-spacing: -0.02em; }
+::selection { background: rgba(75,147,236,.35); }
 
-.hero { padding: 6px 0 18px 0; }
-.hero .kicker { color: #6da7ec; font-weight: 600; font-size: .78rem; letter-spacing: .14em; text-transform: uppercase; }
-.hero h1 { font-size: 2.6rem; font-weight: 800; margin: .15rem 0 .35rem 0; line-height: 1.05; }
-.hero p { color: #c3c2b7; font-size: 1.02rem; max-width: 760px; margin: 0; }
+/* ---- top bar */
+.brand { display:flex; align-items:center; gap:10px; font-weight:800; font-size:1.05rem; letter-spacing:-.01em; }
+.brand .mark { width:30px; height:30px; border-radius:9px; display:grid; place-items:center;
+               background: linear-gradient(140deg, #4b93ec, #2a5fb0); box-shadow: 0 6px 18px rgba(57,135,229,.35); font-size:.95rem; }
+.brand .tag { color:var(--muted); font-weight:500; font-size:.82rem; margin-left:2px; }
+.dash-title { margin: 18px 0 2px 0; }
+.dash-title h1 { font-size: 2.1rem; font-weight: 800; margin: 0; line-height: 1.1; }
+.dash-title p { color: var(--ink2); margin: 6px 0 0 0; font-size: .95rem; }
+.dash-title .pill { display:inline-flex; align-items:center; gap:6px; color:var(--ink2); background:var(--s1);
+                    border:1px solid var(--line); border-radius:999px; padding:3px 10px; font-size:.78rem; margin-right:6px; }
+.dash-title .pill.demo { color:#f7c768; border-color:#5b4614; background:#231b08; }
 
-.kpi { background: #1c1c1b; border: 1px solid #2c2c2a; border-radius: 16px; padding: 16px 18px; height: 100%; }
-.kpi .l { color: #8d8c85; font-size: .74rem; font-weight: 600; letter-spacing: .08em; text-transform: uppercase; }
-.kpi .v { font-size: 1.95rem; font-weight: 750; line-height: 1.15; margin-top: 4px; }
-.kpi .s { color: #a9a89f; font-size: .82rem; margin-top: 2px; }
+/* ---- welcome */
+.hero { padding: 26px 0 8px 0; }
+.hero .kicker { color: #7fb2f0; font-weight: 700; font-size: .74rem; letter-spacing: .16em; text-transform: uppercase; }
+.hero h1 { font-size: 3rem; font-weight: 850; margin: .3rem 0 .5rem 0; line-height: 1.02; letter-spacing:-.035em; }
+.hero h1 .hl { background: linear-gradient(90deg, #8cc0ff, #4b93ec 60%); -webkit-background-clip: text; background-clip: text; color: transparent; }
+.hero p { color: var(--ink2); font-size: 1.05rem; max-width: 640px; margin: 0; line-height:1.55; }
+.panel-h { font-weight: 750; font-size: 1.02rem; margin: 2px 0 2px 0; }
+.panel-s { color: var(--muted); font-size: .85rem; margin-bottom: 10px; }
+.steps { counter-reset: s; list-style: none; padding: 0; margin: 4px 0 0 0; }
+.steps li { position: relative; padding: 0 0 14px 40px; color: var(--ink2); font-size: .9rem; line-height: 1.45; }
+.steps li b { color: var(--ink); }
+.steps li::before { counter-increment: s; content: counter(s); position:absolute; left:0; top:-2px; width:26px; height:26px;
+                    border-radius:8px; display:grid; place-items:center; font-weight:800; font-size:.8rem;
+                    background: var(--acc-soft); color:#8cc0ff; border:1px solid #234a7a; }
+.feats { display:grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+.feat { background: var(--s1); border:1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.feat .i { font-size: 1.2rem; }
+.feat b { display:block; margin-top: 6px; font-size: .92rem; }
+.feat span { color: var(--muted); font-size: .82rem; line-height:1.4; }
+.trust { color: var(--muted); font-size: .8rem; margin: 4px 0 6px 0; display:flex; gap:16px; flex-wrap:wrap; }
 
-.sec { margin: 30px 0 4px 0; }
-.sec h3 { font-size: 1.28rem; font-weight: 700; margin: 0; }
-.sec .what { color: #c3c2b7; font-size: .95rem; margin-top: 3px; }
+/* ---- containers drawn by Streamlit (st.container(border=True)) */
+.st-key-welcome_load, .st-key-welcome_how { background: var(--s1); border-radius: var(--r) !important; }
 
-.guide { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin: 10px 0 14px 0; }
-.guide > div { background: #171716; border: 1px solid #262624; border-radius: 12px; padding: 10px 14px; font-size: .86rem; color: #c3c2b7; }
-.guide b { display: block; color: #6da7ec; font-size: .7rem; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 3px; }
-@media (max-width: 900px) { .guide { grid-template-columns: 1fr; } }
+/* ---- headline numbers */
+.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-top: 6px; }
+.kpi { position: relative; background: linear-gradient(180deg, var(--s2), var(--s1)); border: 1px solid var(--line); border-radius: var(--r);
+       padding: 15px 16px 12px 16px; overflow: hidden; transition: border-color .2s var(--ease), transform .2s var(--ease); }
+.kpi:hover { border-color: var(--line2); transform: translateY(-1px); }
+.kpi .l { color: var(--muted); font-size: .72rem; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
+.kpi .vr { display:flex; align-items:baseline; gap:8px; margin-top: 6px; flex-wrap: wrap; }
+.kpi .v { font-size: 1.9rem; font-weight: 800; line-height: 1.05; letter-spacing:-.02em; }
+.kpi .s { color: #a9a89f; font-size: .8rem; margin-top: 4px; }
+.kpi svg.sp { display:block; width: 100%; height: 30px; margin-top: 8px; }
+.dl { display:inline-flex; align-items:center; gap:3px; font-size:.74rem; font-weight:700; padding:1px 7px; border-radius:999px; }
+.dl.up { color: var(--good); background: rgba(76,199,106,.12); }
+.dl.down { color: var(--crit); background: rgba(255,123,123,.12); }
+.dl.flat { color: var(--muted); background: rgba(139,138,130,.14); }
 
-div[data-testid="stPlotlyChart"] { background: #1c1c1b; border: 1px solid #2c2c2a; border-radius: 16px; padding: 0; overflow: hidden; margin-top: 4px; }
+/* ---- insight strip */
+.insight { background: linear-gradient(90deg, rgba(57,135,229,.12), rgba(57,135,229,.02) 70%); border: 1px solid #22406a;
+           border-radius: var(--r); padding: 12px 16px; margin: 14px 0 4px 0; }
+.insight .h { color:#8cc0ff; font-size:.72rem; font-weight:750; letter-spacing:.12em; text-transform:uppercase; margin-bottom:4px; }
+.insight .it { display:flex; gap:10px; align-items:flex-start; color: var(--ink); font-size:.92rem; padding: 5px 0; line-height:1.4; }
+.insight .it .dot { flex: 0 0 8px; height: 8px; border-radius: 50%; margin-top: 6px; }
 
-.chip { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: .76rem; font-weight: 600; border: 1px solid; }
-.chip.good { color: #54d054; border-color: #1c5f1c; background: #0f2a0f; }
+/* ---- sections */
+.sec { margin: 34px 0 6px 0; }
+.sec h3 { font-size: 1.22rem; font-weight: 750; margin: 0; padding: 0; }
+.sec .what { color: var(--ink2); font-size: .92rem; margin-top: 4px; max-width: 820px; line-height:1.5; }
+
+/* "How to read this": one tidy fold everywhere instead of three boxes */
+details.guide { margin: 8px 0 12px 0; border: 1px solid var(--line); border-radius: 12px; background: var(--s1);
+                transition: border-color .2s var(--ease); }
+details.guide:hover { border-color: var(--line2); }
+details.guide summary { list-style: none; cursor: pointer; padding: 8px 14px; color: #8cc0ff; font-weight: 600; font-size: .82rem;
+                        display:flex; align-items:center; gap:8px; user-select:none; }
+details.guide summary::-webkit-details-marker { display: none; }
+details.guide summary::before { content: ""; width: 7px; height: 7px; border-right: 2px solid currentColor; border-bottom: 2px solid currentColor;
+                                transform: rotate(-45deg); transition: transform .2s var(--ease); margin-right: 2px; }
+details.guide[open] summary::before { transform: rotate(45deg); }
+details.guide .g { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; border-top: 1px solid var(--line);
+                   animation: rc-in .25s var(--ease); }
+details.guide .g > div { padding: 10px 14px; font-size: .86rem; color: var(--ink2); line-height:1.45; }
+details.guide .g > div + div { border-left: 1px solid var(--line); }
+details.guide .g b { display: block; color: var(--muted); font-size: .66rem; letter-spacing: .1em; text-transform: uppercase; margin-bottom: 3px; }
+
+/* ---- charts: one card per chart */
+div[data-testid="stPlotlyChart"] { background: var(--s1); border: 1px solid var(--line); border-radius: var(--r); padding: 4px 2px 0 2px;
+                                   overflow: hidden; margin-top: 4px; }
+.js-plotly-plot .nsewdrag, .js-plotly-plot .draglayer * { cursor: default !important; }
+
+/* ---- chips & cards */
+.chip { display: inline-flex; align-items:center; gap:4px; padding: 2px 9px; border-radius: 999px; font-size: .74rem; font-weight: 650; border: 1px solid; white-space: nowrap; }
+.chip.good { color: #6fdc6f; border-color: #1c5f1c; background: #0f2a0f; }
 .chip.warn { color: #fab219; border-color: #6b4d09; background: #2a2008; }
 .chip.crit { color: #ff8a8a; border-color: #6b2a2a; background: #2a1010; }
-.chip.info { color: #86b6ef; border-color: #1f3a5f; background: #0f1b2d; }
+.chip.info { color: #8cc0ff; border-color: #1f3a5f; background: #0f1b2d; }
 
-.card { background: #1c1c1b; border: 1px solid #2c2c2a; border-radius: 16px; padding: 16px 18px; margin-bottom: 14px; }
-.card h4 { margin: 0 0 6px 0; font-size: 1rem; font-weight: 700; }
-.card .row { color: #a9a89f; font-size: .82rem; margin-top: 8px; }
+.card { background: var(--s1); border: 1px solid var(--line); border-radius: var(--r); padding: 16px 18px; margin-bottom: 12px;
+        transition: border-color .2s var(--ease), transform .2s var(--ease); }
+.card:hover { border-color: var(--line2); }
+.card h4 { margin: 0 0 6px 0; font-size: 1rem; font-weight: 700; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+.card .row { color: #a9a89f; font-size: .84rem; margin-top: 8px; line-height:1.5; }
 .card .big { font-size: 1.7rem; font-weight: 800; letter-spacing: -.02em; }
-.card .why { color: #c3c2b7; font-size: .84rem; margin-top: 8px; border-top: 1px solid #2c2c2a; padding-top: 8px; }
+.card .why { color: var(--ink2); font-size: .84rem; margin-top: 10px; border-top: 1px solid var(--line); padding-top: 9px; line-height:1.45; }
+.lines { line-height: 2.2; }
 
-.step { display:flex; gap:14px; align-items:flex-start; background:#1c1c1b; border:1px solid #2c2c2a; border-radius:16px; padding:16px 18px; margin-bottom:10px; }
-.step .n { background:#3987e5; color:#fff; font-weight:800; border-radius:10px; min-width:32px; height:32px; display:flex; align-items:center; justify-content:center; }
-.step p { margin:2px 0 0 0; color:#c3c2b7; font-size:.92rem; }
-
-.bar { height: 8px; background: #2c2c2a; border-radius: 6px; overflow: hidden; margin: 10px 0 4px 0; }
-.bar > div { height: 100%; background: #3987e5; border-radius: 6px; }
+.bar { height: 8px; background: #2a2a27; border-radius: 6px; overflow: hidden; margin: 10px 0 4px 0; }
+.bar > div { height: 100%; background: linear-gradient(90deg, #2f6fc4, #5aa2f5); border-radius: 6px; transform-origin: left;
+             animation: rc-grow .7s var(--ease); }
 .plan { width: 100%; border-collapse: collapse; font-size: .92rem; margin-top: 6px; }
-.plan th { text-align: left; color: #8d8c85; font-size: .72rem; letter-spacing: .08em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid #2c2c2a; }
-.plan td { padding: 10px 8px; border-bottom: 1px solid #232321; color: #e6e5df; vertical-align: top; }
-.plan td.t { font-weight: 800; white-space: nowrap; }
+.plan th { text-align: left; color: var(--muted); font-size: .7rem; letter-spacing: .08em; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+.plan td { padding: 11px 8px; border-bottom: 1px solid #222220; color: #e6e5df; vertical-align: top; }
+.plan tr:last-child td { border-bottom: 0; }
+.plan td.t { font-weight: 800; white-space: nowrap; color: #fff; }
 .plan td.n { color: #a9a89f; font-size: .82rem; }
-button[data-baseweb="tab"] { font-weight: 600; font-size: .95rem; }
 div[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
 
-.kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; }
+/* ---- tabs: icon + label, clear active state */
+[data-testid="stTabs"] [role="tablist"] { gap: 4px; }
+[data-testid="stTab"] { border-radius: 10px 10px 0 0; padding: 8px 12px !important; transition: background .15s var(--ease), color .15s var(--ease); }
+[data-testid="stTab"]:hover { background: rgba(255,255,255,.04); }
+[data-testid="stTab"] p { font-weight: 600; font-size: .92rem; }
+[data-testid="stTab"] p > span[role="img"] { font-size: 1.1rem; margin-right: 2px; }
+[data-testid="stTab"][aria-selected="true"] p { color: #8cc0ff; }
+[data-testid="stTab"] .react-aria-SelectionIndicator { background: #4b93ec; }
+[data-testid="stTabPanel"] { animation: rc-in .28s var(--ease); }
+.st-key-topbar [data-testid="stHorizontalBlock"] { flex-wrap: nowrap !important; align-items: center; }
+.st-key-topbar [data-testid="stColumn"] { min-width: 0 !important; }
+
+/* ---- buttons & inputs: visible feedback */
+.stButton button, .stDownloadButton button, [data-testid="stPopover"] button { transition: transform .12s var(--ease), border-color .15s, background .15s; }
+.stButton button:active, .stDownloadButton button:active, [data-testid="stPopover"] button:active { transform: scale(.97); }
+[data-testid="stFileUploaderDropzone"] { border: 1.5px dashed #3a5f8f !important; background: rgba(57,135,229,.06) !important;
+                                         border-radius: 14px !important; transition: background .2s, border-color .2s; }
+[data-testid="stFileUploaderDropzone"]:hover { background: rgba(57,135,229,.12) !important; border-color: #4b93ec !important; }
+
 .st-key-rc_store { position: absolute !important; width: 0 !important; height: 0 !important; overflow: hidden; }
-details.guide-m { display: none; }
+
+@keyframes rc-in { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+@keyframes rc-grow { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+
+@media (max-width: 900px) { .feats { grid-template-columns: repeat(2, 1fr); } }
 
 /* ---------------- phones ---------------- */
 @media (max-width: 640px) {
-  .block-container { padding-left: 1rem; padding-right: 1rem; }
-  header[data-testid="stHeader"] { background: rgba(18,18,17,.94); backdrop-filter: blur(8px); border-bottom: 1px solid #262624; }
-  .hero h1 { font-size: 2rem; }
-  .hero p { font-size: .95rem; }
+  .block-container { padding: 4.2rem 1rem 3rem 1rem; }
+  .brand .tag { display: none; }
+  .st-key-topbar [data-testid="stColumn"]:first-child { flex: 1 1 auto !important; width: auto !important; }
+  .st-key-topbar [data-testid="stColumn"]:last-child { flex: 0 0 auto !important; width: auto !important; }
+  header[data-testid="stHeader"] { background: rgba(15,15,14,.94); backdrop-filter: blur(8px); border-bottom: 1px solid #23231f; }
+  .hero { padding-top: 10px; }
+  .hero h1 { font-size: 2.15rem; }
+  .hero p { font-size: .97rem; }
+  .feats { gap: 8px; }
+  .feat { padding: 12px; }
+  .dash-title h1 { font-size: 1.6rem; }
 
-  /* headline numbers: 2 x 2 instead of 4 stacked cards */
   .kpis { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .kpi { padding: 12px 14px; border-radius: 14px; }
+  .kpi { padding: 12px 13px 10px 13px; border-radius: 14px; }
   .kpi .v { font-size: 1.5rem; }
-  .kpi .l { font-size: .66rem; }
-  .kpi .s { font-size: .76rem; }
+  .kpi .l { font-size: .64rem; }
+  .kpi .s { font-size: .74rem; }
+  .kpi svg.sp { height: 24px; }
 
-  /* the three guide boxes fold into one tappable line */
-  .guide { display: none; }
-  details.guide-m { display: block; background: #171716; border: 1px solid #262624; border-radius: 12px;
-                    padding: 10px 14px; margin: 8px 0 12px 0; font-size: .86rem; color: #c3c2b7; }
-  details.guide-m summary { color: #6da7ec; font-weight: 600; font-size: .8rem; cursor: pointer; }
-  details.guide-m b { display: block; color: #6da7ec; font-size: .68rem; letter-spacing: .1em; text-transform: uppercase; margin: 10px 0 2px 0; }
+  details.guide .g { grid-template-columns: 1fr; }
+  details.guide .g > div + div { border-left: 0; border-top: 1px solid var(--line); }
+  .sec { margin-top: 28px; }
+  .sec h3 { font-size: 1.12rem; }
+  .sec .what { font-size: .88rem; }
 
-  /* all tabs visible as wrapping chips instead of a hidden side-scroll */
-  [data-testid="stTabs"] [role="tablist"] { flex-wrap: wrap; gap: 6px; overflow: visible !important;
-                                            border: 0 !important; box-shadow: none !important; padding-bottom: 4px; }
-  [data-testid="stTab"] { flex: 0 0 auto; padding: 5px 11px !important; margin: 0 !important; height: auto; min-height: 0;
-                          border: 1px solid #2c2c2a !important; border-radius: 999px; background: #1c1c1b; box-shadow: none !important; }
+  /* tabs become a 4 x 2 grid of icon tiles, all visible at once */
+  [data-testid="stTabs"] [role="tablist"] { display: grid !important; grid-template-columns: repeat(4, 1fr); gap: 6px;
+                                            overflow: visible !important; border: 0 !important; box-shadow: none !important; padding-bottom: 6px; }
+  [data-testid="stTab"] { margin: 0 !important; padding: 8px 2px !important; height: auto; min-height: 58px; border-radius: 12px;
+                          border: 1px solid var(--line) !important; background: var(--s1); box-shadow: none !important; justify-content: center; }
+  [data-testid="stTab"] > div, [data-testid="stTab"] [data-testid="stMarkdownContainer"] { width: 100%; }
+  [data-testid="stTab"] p { display: flex; flex-direction: column; align-items: center; gap: 3px; font-size: .7rem !important;
+                            line-height: 1.15; text-align: center; white-space: normal; }
+  [data-testid="stTab"] p > span[role="img"] { font-size: 1.35rem !important; margin: 0 !important; }
+  [data-testid="stTab"] .react-aria-SelectionIndicator { display: none !important; }
   [data-testid="stTab"]::after, [data-testid="stTab"]::before,
   [data-testid="stTabs"] [role="tablist"]::after, [data-testid="stTabs"] [role="tablist"]::before { display: none !important; }
-  [data-testid="stTab"][aria-selected="true"] { background: #1f3a5f; border-color: #3987e5 !important; }
-  [data-testid="stTab"] p { font-size: .8rem !important; }
+  [data-testid="stTab"][aria-selected="true"] { background: var(--acc-soft); border-color: #3e7fd0 !important; }
   [data-testid="stTab"][aria-selected="true"] p { color: #fff !important; }
   [data-testid="stTabsScrollRight"], [data-testid="stTabsScrollLeft"] { display: none !important; }
 
@@ -126,7 +225,8 @@ details.guide-m { display: none; }
   .plan, .plan tbody { display: block; }
   .plan tr:first-child { display: none; }
   .plan tr { display: grid; grid-template-columns: auto 1fr; column-gap: 10px; align-items: baseline;
-             padding: 12px 0; border-bottom: 1px solid #232321; }
+             padding: 12px 0; border-bottom: 1px solid #222220; }
+  .plan tr:last-child { border-bottom: 0; }
   .plan td { display: block; padding: 0; border: 0; }
   .plan td.l { order: 1; grid-column: 1 / -1; font-weight: 700; margin-bottom: 4px; }
   .plan td.t { order: 2; font-size: 1.35rem; }
@@ -145,22 +245,52 @@ def section(title: str, what: str):
 
 
 def guide(read: str, good: str, act: str):
-    """Three small boxes under a heading: how to read it, what good looks like, what to do."""
-    # desktop shows three boxes; phones get the same text folded behind one tappable line (CSS picks which)
+    """How to read it / what good looks like / what to do, folded behind one tap so the page stays calm."""
     st.markdown(
-        f'<div class="guide"><div><b>How to read it</b>{read}</div>'
-        f'<div><b>What good looks like</b>{good}</div><div><b>What to do</b>{act}</div></div>'
-        f'<details class="guide-m"><summary>How to read this</summary><b>How to read it</b>{read}'
-        f'<b>What good looks like</b>{good}<b>What to do</b>{act}</details>',
+        f'<details class="guide"><summary>How to read this</summary><div class="g">'
+        f'<div><b>How to read it</b>{read}</div><div><b>What good looks like</b>{good}</div>'
+        f'<div><b>What to do</b>{act}</div></div></details>',
         unsafe_allow_html=True,
     )
 
 
+def spark(values, color="#4b93ec") -> str:
+    """Tiny inline trend line (SVG) for a headline number."""
+    v = [float(x) for x in values]
+    if len(v) < 2 or max(v) == min(v) == 0:
+        return ""
+    lo, hi = min(v), max(v)
+    span = (hi - lo) or 1.0
+    pts = [(i * 100 / (len(v) - 1), 26 - (x - lo) / span * 22) for i, x in enumerate(v)]
+    line = " ".join(f"{x:.1f},{y:.1f}" for x, y in pts)
+    area = f"0,30 {line} 100,30"
+    gid = f"g{abs(hash((tuple(v), color))) % 10**8}"
+    return (f'<svg class="sp" viewBox="0 0 100 30" preserveAspectRatio="none">'
+            f'<defs><linearGradient id="{gid}" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="{color}" stop-opacity=".28"/>'
+            f'<stop offset="1" stop-color="{color}" stop-opacity="0"/></linearGradient></defs>'
+            f'<polygon points="{area}" fill="url(#{gid})"/><polyline points="{line}" fill="none" stroke="{color}" '
+            f'stroke-width="1.6" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>')
+
+
+def delta_badge(d, fmt="{:+.0f}", good_up=True) -> str:
+    if d is None or (isinstance(d, float) and np.isnan(d)):
+        return ""
+    kind = "flat" if abs(d) < 1e-9 else (("up" if d > 0 else "down") if good_up else ("down" if d > 0 else "up"))
+    arrow = "→" if kind == "flat" else ("↑" if d > 0 else "↓")
+    return f'<span class="dl {kind}">{arrow} {fmt.format(d)}</span>'
+
+
 def kpi_row(items):
-    """A row of headline numbers: 4 across on desktop, 2 x 2 on phones. items = [(label, value, sub), ...]"""
-    cards = "".join(f'<div class="kpi"><div class="l">{label}</div><div class="v">{value}</div>'
-                    f'<div class="s">{sub}</div></div>' for label, value, sub in items)
-    st.markdown(f'<div class="kpis">{cards}</div>', unsafe_allow_html=True)
+    """Headline numbers: 4 across on desktop, 2 x 2 on phones.
+    items = [(label, value, sub), ...] or (label, value, sub, delta_html, spark_html)."""
+    cards = []
+    for it in items:
+        label, value, sub = it[:3]
+        dl = it[3] if len(it) > 3 else ""
+        sp = it[4] if len(it) > 4 else ""
+        cards.append(f'<div class="kpi"><div class="l">{label}</div><div class="vr"><div class="v">{value}</div>{dl}</div>'
+                     f'<div class="s">{sub}</div>{sp}</div>')
+    st.markdown(f'<div class="kpis">{"".join(cards)}</div>', unsafe_allow_html=True)
 
 
 def chip(kind, text):
@@ -170,29 +300,47 @@ def chip(kind, text):
 
 def style(fig, height=380, legend=True):
     fig.update_layout(
-        height=height, margin=dict(l=12, r=16, t=28, b=30),
+        height=height, margin=dict(l=12, r=16, t=40 if legend else 24, b=30),
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Inter, system-ui, sans-serif", color=INK2, size=12),
         hoverlabel=dict(bgcolor="#252523", bordercolor="#3a3a37", font=dict(color=INK, size=12)),
-        legend=dict(orientation="h", y=1.12, x=0, font=dict(color=INK2), bgcolor="rgba(0,0,0,0)", traceorder="normal"),
-        showlegend=legend, barcornerradius=4, hovermode="closest",
+        # tapping a legend item shows/hides that series; double-tap isolation is off because it confuses on phones
+        legend=dict(orientation="h", yanchor="bottom", y=1.0, x=0, font=dict(color=INK2, size=11),
+                    bgcolor="rgba(0,0,0,0)", traceorder="normal", itemclick="toggle", itemdoubleclick=False),
+        showlegend=legend, barcornerradius=4, hovermode="closest", hoverdistance=40,
+        # No drag-to-zoom: on touch screens a swipe or a slightly moved tap zoomed into an empty box, which
+        # looked like the chart vanished until a double-tap reset it. Charts are read, not explored.
+        dragmode=False,
     )
-    fig.update_xaxes(showgrid=False, linecolor=GRID, tickfont=dict(color=MUTED), zeroline=False, automargin=True)
-    fig.update_yaxes(gridcolor=GRID, gridwidth=1, zeroline=False, tickfont=dict(color=MUTED), linecolor="rgba(0,0,0,0)", automargin=True)
+    fig.update_xaxes(showgrid=False, linecolor=GRID, tickfont=dict(color=MUTED), zeroline=False, automargin=True, fixedrange=True)
+    fig.update_yaxes(gridcolor=GRID, gridwidth=1, zeroline=False, tickfont=dict(color=MUTED), linecolor="rgba(0,0,0,0)",
+                     automargin=True, fixedrange=True)
     return fig
 
 
+PLOT_CONFIG = {"displayModeBar": False, "scrollZoom": False, "doubleClick": False, "showTips": False, "responsive": True}
+
+
 def show(fig):
-    st.plotly_chart(fig, width="stretch", theme=None, config={"displayModeBar": False})
+    st.plotly_chart(fig, width="stretch", theme=None, config=PLOT_CONFIG)
 
 
-# ------------------------------------------------------------------ sidebar & data
+# ------------------------------------------------------------------ data
 here = Path(__file__).parent
 auto = sorted([*here.glob("export*.csv"), *(here.parent / "data").glob("export*.csv")],
               key=lambda p: p.stat().st_mtime, reverse=True)
-# Invisible browser-storage component is mounted here at the end of the run. It must live in the main
-# area: on phones the sidebar starts closed and Streamlit does not render it, so the component would never run.
+if os.environ.get("REPCOMPASS_NO_LOCAL"):  # tests: behave like the public site, which has no local file
+    auto = []
+# Invisible browser-storage component, mounted at the end of the run. It lives in the main area because
+# on phones a closed sidebar is not rendered at all, so anything in it would never run.
 store_slot = st.container(key="rc_store")
+
+# Settings widgets live in the Settings tab, which is not drawn on the welcome screen. Streamlit drops a
+# widget's value when the widget is not drawn, so re-assign them every run to keep them.
+KEEP = ("remember", "unit", "low", "high", "step", "bw", "sex", "lyfta_key", "remember_key", "demo")
+for _k in KEEP:
+    if _k in st.session_state:
+        st.session_state[_k] = st.session_state[_k]
 
 
 def apply_setup(s: dict):
@@ -245,6 +393,14 @@ def run_sync(key: str):
         st.session_state["lyfta_err"] = str(exc)
 
 
+def start_demo():
+    st.session_state["demo"] = True
+
+
+def stop_demo():
+    st.session_state["demo"] = False
+
+
 # restore what this browser saved last time (once per session, before any widget exists)
 saved = BS.items()
 if saved is not None and not st.session_state.get("_restored"):
@@ -258,6 +414,9 @@ if saved is not None and not st.session_state.get("_restored"):
         st.session_state["lyfta_key"] = saved["lyfta_key"]
         st.session_state["remember_key"] = True
 st.session_state.setdefault("remember", True)
+st.session_state.setdefault("demo", False)
+st.session_state.setdefault("lyfta_key", "")
+st.session_state.setdefault("remember_key", False)
 st.session_state.setdefault("unit", "kg")
 st.session_state.setdefault("low", 8)
 st.session_state.setdefault("high", 12)
@@ -268,53 +427,58 @@ def _unit_changed():
     st.session_state["step"] = 2.5 if st.session_state["unit"] == "kg" else 5.0
 
 
-with st.sidebar:
-    st.markdown("### 🏋️ Repcompass")
-    st.caption("Your Lyfta data, explained.")
-    st.markdown("**1. Your data**")
-    ups = st.file_uploader("Workout export (CSV)", type="csv", accept_multiple_files=True, label_visibility="collapsed",
-                           help="Lyfta, Hevy or Strong CSV. Add several files to combine them. A workout that appears in more than one file is only counted once.")
-    with st.expander("Connect Lyfta directly", icon=":material/sync:",
-                     expanded=bool(st.session_state.get("lyfta_err"))):
-        st.caption(f"Skip the CSV. Get your free personal key at [my.lyfta.app/community/api]({L.KEY_PAGE}) "
-                   "and paste it here. It only reads your workouts.")
-        lyfta_key = st.text_input("Lyfta API key", type="password", key="lyfta_key")
-        st.checkbox("Remember key on this device", key="remember_key",
-                    help="Saved in this browser only, so the app syncs by itself next visit. Leave off on a shared computer.")
-        if st.button("Sync now", type="primary", width="stretch", disabled=not lyfta_key):
-            run_sync(lyfta_key)
-        if st.session_state.get("lyfta_err"):
-            st.error(st.session_state["lyfta_err"])
-        elif st.session_state.get("lyfta_sync"):
-            _f, _i = st.session_state["lyfta_sync"]
-            st.caption(f"Synced {_i['workouts']} workouts at {st.session_state.get('lyfta_sync_at')}.")
-    use_demo = st.toggle("Use demo data", value=False, help="Fake 30-session history so you can explore the app.")
-    st.toggle("Remember my data on this device", key="remember",
-              help="Keeps your combined history and settings in this browser (not on any server), so next visit "
-                   "you do not need to upload again. New uploads are added on top. Turn off on a shared computer.")
-    st.markdown("**2. Units in your export**")
-    unit = st.radio("Unit", ["kg", "lb"], horizontal=True, label_visibility="collapsed", key="unit", on_change=_unit_changed,
-                    help="Lyfta exports numbers in whatever unit your app is set to. Pick the same one here.")
-    st.markdown("**3. How you progress**")
-    low = st.number_input("Rep range: low", 3, 20, key="low", help="Below this many reps, hold the weight and build reps first.")
-    high = st.number_input("Rep range: high", 4, 30, key="high", help="Hit this on every set and the app tells you to add weight.")
-    step = st.number_input(f"Weight jump ({unit})", 0.5, 20.0, step=0.5, key="step",
-                           help="The smallest plate jump you use.")
-    st.caption("Your export has no effort score (RPE), so everything here is based on weight and reps only.")
-
+use_demo = st.session_state["demo"]
 remember = st.session_state["remember"]
+unit = st.session_state["unit"]
+low, high, step = st.session_state["low"], st.session_state["high"], st.session_state["step"]
+lyfta_key = st.session_state.get("lyfta_key") or ""
+
+UPLOAD_HELP = ("Lyfta, Hevy or Strong CSV. Add several files to combine them. "
+               "A workout that appears in more than one file is only counted once.")
+
+
+def uploader():
+    # Same key and arguments wherever it is drawn (welcome card or the "Add workouts" menu), so Streamlit
+    # treats it as one widget and the chosen files survive the switch from welcome screen to dashboard.
+    return st.file_uploader("Workout export (CSV)", type="csv", accept_multiple_files=True,
+                            label_visibility="collapsed", key="uploads", help=UPLOAD_HELP)
+
+
 # a remembered key syncs once per visit by itself
 if (saved is not None and lyfta_key and st.session_state.get("remember_key")
         and not st.session_state.get("_auto_synced") and not use_demo):
     st.session_state["_auto_synced"] = True
     run_sync(lyfta_key)
 
-raw_export, infos, load_err, saved_rows = None, [], None, 0
+# Will there be something to show? Decides between the welcome screen and the dashboard before loading,
+# because the uploader has to be drawn (in one place or the other) before its files can be read.
+has_saved = bool(remember and saved and saved.get("history"))
+expect_data = bool(use_demo or st.session_state.get("uploads") or has_saved or auto or st.session_state.get("lyfta_sync"))
+
+top = st.container()
+topbar = top.container(key="topbar")
+with topbar:
+    bar = st.columns([3, 1.25], vertical_alignment="center")
+    bar[0].markdown('<div class="brand"><div class="mark">🏋️</div>Repcompass<span class="tag">· training, explained</span></div>',
+                    unsafe_allow_html=True)
+ups = None
+if expect_data:
+    with bar[1].popover("Add workouts", icon=":material/upload_file:", width="stretch"):
+        st.markdown('<div class="panel-h">Add newer workouts</div>'
+                    '<div class="panel-s">Drop your latest export. It is merged with what you already have, '
+                    'and repeated workouts are only counted once.</div>', unsafe_allow_html=True)
+        ups = uploader()
+        if use_demo:
+            st.button("Leave demo and use my data", on_click=stop_demo, width="stretch", icon=":material/logout:")
+        elif has_saved:
+            st.caption("Your history is remembered in this browser, so you only need the newest export each time.")
+
+raw_export, infos, load_err, saved_rows, df = None, [], None, 0, None
 if use_demo:
     df = A.load_demo()
-else:
+elif expect_data:
     frames, infos = [], []
-    hist = I.unpack_history(saved["history"]) if (remember and saved and saved.get("history")) else None
+    hist = I.unpack_history(saved["history"]) if has_saved else None
     if hist is not None and len(hist):
         saved_rows = len(hist)
         frames.append(hist)
@@ -342,45 +506,11 @@ else:
         blob = I.pack_history(raw_export)
         if len(blob) < 4_000_000:
             BS.put("history", blob)
+if not use_demo:
     if not remember and saved and saved.get("history"):
         BS.put("history", None)
     BS.put("optout", None if remember else "1")
     BS.put("lyfta_key", lyfta_key if (st.session_state.get("remember_key") and lyfta_key) else None)
-
-with st.sidebar:
-    if load_err:
-        st.error(load_err)
-    if not ups and not use_demo and auto and not st.session_state.get("lyfta_sync"):
-        st.caption(f"Using the newest local file: `{auto[0].name}`")
-    if saved_rows and not use_demo:
-        st.caption(f"Loaded your saved history from this device ({saved_rows} sets). Upload or sync to add newer workouts.")
-    for info in infos:
-        if info["source"] not in ("Lyfta", "Lyfta (synced)", "Saved on this device"):
-            st.caption(f"Read **{info['name']}** as a {info['source']} export ({info['rows']} rows).")
-        if info.get("unit") and info["unit"] != unit:
-            st.warning(f"This {info['source']} export is in {info['unit']}. Switch the unit above to {info['unit']}.")
-        if info.get("unknown_set_types"):
-            st.caption(f"Lyfta sent set types Repcompass does not know yet ({', '.join(info['unknown_set_types'])}). They are counted as normal sets.")
-
-
-# ------------------------------------------------------------------ onboarding (no data yet)
-def onboarding():
-    st.markdown(
-        '<div class="hero"><div class="kicker">Repcompass</div><h1>Know if your training is working.</h1>'
-        "<p>Upload your Lyfta export and get plain-English answers: are you getting stronger, which lifts "
-        "have stalled, are you training every muscle enough, and what weight to try next session.</p></div>",
-        unsafe_allow_html=True,
-    )
-    st.markdown("#### Get started in 3 steps")
-    for n, t, d in [
-        ("1", "Connect Lyfta, or export a CSV", "Fastest: open Connect Lyfta directly in the sidebar and paste your free API key "
-         "from my.lyfta.app/community/api. Or export a CSV from the Lyfta app (Settings → Export data). Hevy and Strong CSV exports work too."),
-        ("2", "Load it once", "Sync, or drag the CSV into the box on the left. With Remember my data on this device switched on, your "
-         "history stays in this browser and loads by itself next visit. It is never saved on a server."),
-        ("3", "Read the tabs left to right", "Overview tells you the big picture, then dig into each lift, your plateaus, and next session's targets."),
-    ]:
-        st.markdown(f'<div class="step"><div class="n">{n}</div><div><b>{t}</b><p>{d}</p></div></div>', unsafe_allow_html=True)
-    st.info("No export yet? Switch on **Use demo data** in the sidebar to explore with a fake training history.")
 
 
 def flush_store():
@@ -388,16 +518,66 @@ def flush_store():
     with store_slot:
         err = BS.mount()
     if err:
-        st.sidebar.caption(f"This browser would not save your data ({err}).")
+        st.caption(f"This browser would not save your data ({err}).")
+
+
+# ------------------------------------------------------------------ welcome (no data yet)
+def welcome():
+    st.markdown(
+        '<div class="hero"><div class="kicker">Free · no account · works with Lyfta, Hevy and Strong</div>'
+        "<h1>Know if your training is <span class='hl'>working</span>.</h1>"
+        "<p>Drop in your workout export and get straight answers: which lifts are climbing, which have stalled, "
+        "whether every muscle gets enough work, and exactly what to lift next session.</p></div>",
+        unsafe_allow_html=True,
+    )
+    c1, c2 = st.columns([1.15, 1], gap="medium")
+    with c1.container(key="welcome_load", border=True):
+        st.markdown('<div class="panel-h">Load your workouts</div>'
+                    '<div class="panel-s">Choose the CSV file you exported. On a phone, tap Upload and pick it '
+                    'from Files or Downloads.</div>', unsafe_allow_html=True)
+        got = uploader()
+        if load_err:
+            st.error(load_err)
+        st.button("Try it with demo data", on_click=start_demo, icon=":material/play_arrow:", width="stretch")
+        st.markdown('<div class="trust"><span>🔒 Read in memory, never stored on a server</span>'
+                    '<span>💾 Remembered in this browser only</span></div>', unsafe_allow_html=True)
+    with c2.container(key="welcome_how", border=True):
+        st.markdown(
+            '<div class="panel-h">Get your export from Lyfta</div>'
+            '<div class="panel-s">About 30 seconds, and only needed once. No API key, no login here.</div>'
+            '<ol class="steps">'
+            '<li><b>Open Lyfta → Settings → Export data.</b> It saves a CSV with every workout you have logged.</li>'
+            '<li><b>Load that file here.</b> Repcompass reads it in your browser session and keeps a copy in '
+            'this browser so next time it opens straight to your dashboard.</li>'
+            '<li><b>Later, add only the new export.</b> Repcompass merges it and never counts a workout twice.</li>'
+            '</ol>', unsafe_allow_html=True)
+        with st.expander("Using Hevy or Strong?"):
+            st.markdown("- **Hevy:** Settings → Export & Import Data → Export workouts.\n"
+                        "- **Strong:** Settings → Export Strong data.\n\n"
+                        "Load the CSV the same way. You can mix files from different apps.")
+    st.markdown(
+        '<div class="feats">'
+        '<div class="feat"><div class="i">📈</div><b>Lift progress</b><span>Estimated max for every lift, with PRs marked.</span></div>'
+        '<div class="feat"><div class="i">🧱</div><b>Plateau check</b><span>Spots stalled lifts and says what to change.</span></div>'
+        '<div class="feat"><div class="i">🎯</div><b>Next workout</b><span>Weight × reps targets for every lift.</span></div>'
+        '<div class="feat"><div class="i">💪</div><b>Muscle balance</b><span>Hard sets per muscle against a 10-20 band.</span></div>'
+        '</div>', unsafe_allow_html=True)
+    return got
 
 
 if df is None:
-    if saved is None and not use_demo and not ups and not load_err and "_store_checked" not in st.session_state:
+    if saved is None and not use_demo and not st.session_state.get("uploads") and "_store_checked" not in st.session_state:
         # first run of a visit: the browser has not answered yet, so do not flash the welcome screen
         st.session_state["_store_checked"] = True
-        st.caption("Checking this browser for saved data... If nothing loads, use the sidebar to upload or try demo data.")
+        st.caption("Checking this browser for saved data...")
+    elif expect_data:
+        # something was expected but could not be read (for example a broken file)
+        if load_err:
+            st.error(f"{load_err} Open Add workouts to try another file, or remove the file there.")
+        else:
+            st.info("No workouts found. Open Add workouts to load an export.")
     else:
-        onboarding()
+        welcome()
     flush_store()
     st.stop()
 
@@ -413,31 +593,67 @@ last_day = sess["day"].max()
 first_day = sess["day"].min()
 span_weeks = max((last_day - first_day).days / 7.0, 1)
 l28 = sess[sess["day"] > last_day - pd.Timedelta(days=28)]
+p28 = sess[(sess["day"] <= last_day - pd.Timedelta(days=28)) & (sess["day"] > last_day - pd.Timedelta(days=56))]
 lifts = (w[w["e1rm"].notna()].groupby("Exercise")["day"].nunique().sort_values(ascending=False))
 plateaus = A.plateau_report(df)
 n_stalled = int((plateaus["Status"] == "Stalled").sum()) if len(plateaus) else 0
 prs = A.pr_timeline(df)
 deload = F.deload_check(df)
+bal = A.muscle_balance(df)
+review = F.weekly_review(df, plateaus, deload, bal, st.session_state.get("goals", []), unit)
 
-st.markdown(
-    f'<div class="hero"><div class="kicker">Repcompass</div><h1>Your training, explained.</h1>'
-    f"<p>{len(sess)} workouts logged from {first_day:%d %b %Y} to {last_day:%d %b %Y}. "
-    f"Read the tabs left to right. Each one starts with what it shows and ends with what to do.</p></div>",
-    unsafe_allow_html=True,
-)
+with top:
+    pills = (f'<span class="pill">📅 {first_day:%d %b %Y} – {last_day:%d %b %Y}</span>'
+             f'<span class="pill">🏋️ {len(sess)} workouts</span>')
+    if use_demo:
+        pills = '<span class="pill demo">Demo data</span>' + pills
+    elif saved_rows:
+        pills += '<span class="pill">💾 Remembered on this device</span>'
+    st.markdown(f'<div class="dash-title"><h1>Your training, explained.</h1><p>{pills}</p></div>', unsafe_allow_html=True)
+    for info in infos:
+        if info.get("unit") and info["unit"] != unit:
+            st.warning(f"This {info['source']} export is in {info['unit']}. Switch the unit to {info['unit']} in Settings.")
 
-t_over, t_lift, t_plat, t_next, t_str, t_cmp, t_coach, t_bw, t_data, t_guide = st.tabs(
-    ["Overview", "Lift progress", "Plateaus & PRs", "Next workout", "Strength & goals", "Compare",
-     "Coach & share", "Bodyweight", "Data & settings", "Guide"])
+t_over, t_lift, t_plat, t_next, t_str, t_cmp, t_coach, t_data = st.tabs(
+    [":material/space_dashboard: Overview", ":material/trending_up: Lifts", ":material/flag: Plateaus",
+     ":material/event_upcoming: Next workout", ":material/emoji_events: Goals", ":material/compare_arrows: Compare",
+     ":material/forum: Coach", ":material/tune: Settings"])
 
 # ================================================================== OVERVIEW
 with t_over:
+    # headline numbers: last 4 weeks, compared with the 4 weeks before, with a 12-week trend line
+    _ends = [last_day - pd.Timedelta(days=7 * k) for k in range(11, -1, -1)]
+
+    def _per_week(days):
+        d = pd.to_datetime(pd.Series(days))
+        return [int(((d > e - pd.Timedelta(days=7)) & (d <= e)).sum()) for e in _ends]
+
+    def _in(days, lo, hi):
+        d = pd.to_datetime(pd.Series(days))
+        return int(((d > last_day - pd.Timedelta(days=hi)) & (d <= last_day - pd.Timedelta(days=lo))).sum())
+
+    hs_days = A.hard_sets(df)["day"]
+    pr_days = prs["Date"] if len(prs) else pd.Series([], dtype="datetime64[ns]")
+    sets28, sets_prev = _in(hs_days, 0, 28) / 4, _in(hs_days, 28, 56) / 4
+    prs28, prs_prev = _in(pr_days, 0, 28), _in(pr_days, 28, 56)
+    has_prev = len(p28) > 0
     kpi_row([
-        ("Workouts logged", f"{len(sess)}", f"about {len(sess) / span_weeks:.1f} per week overall"),
-        ("Last 4 weeks", f"{len(l28)}", "workouts · aim for 3-5" if len(l28) < 12 else "workouts, solid"),
-        ("Stalled lifts", f"{n_stalled}", "need a change of plan" if n_stalled else "nothing stuck"),
-        ("PRs set", f"{len(prs)}", "new best estimated 1RMs"),
+        ("Workouts · 4 wks", f"{len(l28)}", f"{len(sess)} total · aim for 12-20" if len(l28) < 12 else f"{len(sess)} total · solid",
+         delta_badge(len(l28) - len(p28)) if has_prev else "", spark(_per_week(sess["day"]))),
+        ("Hard sets / week", f"{sets28:.0f}", "average over the last 4 weeks",
+         delta_badge(sets28 - sets_prev) if has_prev else "", spark(_per_week(hs_days), "#199e70")),
+        ("PRs · 4 wks", f"{prs28}", f"{len(prs)} all time",
+         delta_badge(prs28 - prs_prev) if has_prev else "", spark(_per_week(pr_days), "#c98500")),
+        ("Stalled lifts", f"{n_stalled}", "need a change of plan" if n_stalled else "nothing stuck", "", ""),
     ])
+
+    # the three findings that matter most right now (worst first), from the same rules as the Coach tab
+    order = {"crit": 0, "warn": 1, "good": 2, "info": 3}
+    top3 = sorted(review["bullets"], key=lambda b: order.get(b[0], 9))[:3]
+    dot = {"crit": "#ff7b7b", "warn": "#f2b33d", "good": "#4cc76a", "info": "#8cc0ff"}
+    st.markdown('<div class="insight"><div class="h">Right now</div>' + "".join(
+        f'<div class="it"><span class="dot" style="background:{dot.get(k, "#8cc0ff")}"></span><span>{escape(t)}</span></div>'
+        for k, t in top3) + "</div>", unsafe_allow_html=True)
 
     # ---- calendar
     section("Training calendar",
@@ -480,7 +696,6 @@ with t_over:
     guide("Each bar is a muscle. The shaded band is 10-20 sets per week, a commonly used range for building muscle.",
           "Every muscle you care about inside or near the band.",
           "Below the band, add 2-4 sets for that muscle next week. Above it, you may be doing more than you can recover from.")
-    bal = A.muscle_balance(df)
     fig = go.Figure()
     fig.add_vrect(x0=10, x1=20, fillcolor=BLUE, opacity=0.10, line_width=0)
     for _, r in bal.iterrows():
@@ -589,6 +804,7 @@ with t_lift:
                         marker=dict(size=14, color="#fab219", symbol="star", line=dict(color=SURFACE, width=2)),
                         hovertemplate="%{x|%d %b %Y}<br>PR: <b>%{y:.1f}</b><extra></extra>")
     style(fig, 380)
+    fig.update_layout(hovermode="x unified")  # one tap shows every line's value for that day
     fig.update_yaxes(title=unit)
     show(fig)
 
@@ -740,7 +956,7 @@ with t_next:
 
     section("Or pick lifts one by one",
             "A target for each lift based on what you did last time. This uses double progression: fill the rep range first, then add weight.")
-    guide(f"Each card shows last session, then the weight and reps to aim for. Your rep range is {low}-{high} (change it in the sidebar).",
+    guide(f"Each card shows last session, then the weight and reps to aim for. Your rep range is {low}-{high} (change it in Settings).",
           "Hitting the target reps on every set.",
           f"Hit {high} reps on every set → the card tells you to add {step:g} {unit}. Missed it → repeat the weight and aim for one more rep.")
     ex_list = list(lifts.index)
@@ -763,8 +979,8 @@ with t_next:
         shown += 1
     st.caption("These are suggestions, not rules. If a set felt very easy or very hard, trust your body over the number.")
 
-# ================================================================== BODYWEIGHT
-with t_bw:
+# ================================================================== BODYWEIGHT (bottom of Lifts)
+with t_lift:
     section("Bodyweight & timed work", "Pull-ups, dips with no added weight, and holds like planks. These do not have a weight, so we track reps and seconds.")
     guide("Each line is one exercise. Higher is better.",
           "Best reps climbing slowly over months.",
@@ -794,49 +1010,60 @@ with t_bw:
     if not len(bw) and not len(tp):
         st.info("No bodyweight or timed exercises found in this export.")
 
-# ================================================================== GUIDE
-with t_guide:
-    section("Plain-English guide", "Every term used in this app, and the assumptions behind the numbers.")
-    terms = [
-        ("Estimated 1RM (e1RM)", "A guess at the heaviest single rep you could do, worked out from a set with more reps. Formula: weight × (1 + reps ÷ 30). It lets you compare sessions even when the reps differ. Sets above 12 reps are ignored."),
-        ("Hard set", "Any set that is not a warm-up and has reps logged. Counting hard sets per muscle is a simple way to check you train everything enough."),
-        ("Volume", "Weight × reps added up. 3 sets of 10 reps at 50 is 1,500 volume. Used to compare sessions."),
-        ("PR (personal record)", "A session where a lift's e1RM beat everything you did before it."),
-        ("Plateau / stalled", "The last 3 sessions of a lift did not beat the best before them."),
-        ("Double progression", "First fill your rep range at one weight. Once every set hits the top of the range, add weight and start at the bottom again."),
-        ("Deload", "An easier week (about 60% of your usual weight, or half the sets) so fatigue can drop. Repcompass suggests one when several lifts get weaker and you have trained hard for many weeks in a row."),
-        ("Strength level", "Your estimated 1RM divided by your bodyweight, compared with rough Beginner to Elite ratios. A guideline only: it ignores age, height and how long you have trained."),
-        ("Goal ETA", "A straight line fitted to your estimated 1RM over the last 4 months, extended to your target. Real progress slows down, so treat the date as a best case."),
-        ("Rep record", "The heaviest weight you have used for an exact number of reps, such as your best 5-rep weight."),
-        ("RPE", "How close to failure a set was, from 1-10. Your Lyfta export does not include it, so the app cannot use it."),
-    ]
-    for term, d in terms:
-        st.markdown(f'<div class="card"><h4>{term}</h4><div class="row" style="margin-top:0;color:#c3c2b7">{d}</div></div>', unsafe_allow_html=True)
-    section("Good to know", "Honest limits so you do not over-trust the numbers.")
-    st.markdown(
-        "- Muscle groups are guessed from exercise names, so an unusual exercise may land in the wrong group.\n"
-        "- The 10-20 sets per week band is a general guideline, not a prescription for everyone.\n"
-        "- Few sessions means shaky conclusions. Plateau checks need 4+ sessions of the same lift.\n"
-        "- Left and right sets of one-sided exercises are counted as separate sets.\n"
-        "- If you run this locally, your data stays on your computer.")
-
-
 # ================================================================== DATA & SETTINGS
 with t_data:
-    section("Your data", "What was loaded, and how to keep your own copy. Repcompass never stores your files on a server.")
+    section("Training settings", "These shape the targets in Next workout and the units shown everywhere.")
+    sc1, sc2 = st.columns(2, gap="medium")
+    with sc1.container(border=True):
+        st.radio("Units in your export", ["kg", "lb"], horizontal=True, key="unit", on_change=_unit_changed,
+                 help="Lyfta exports numbers in whatever unit your app is set to. Pick the same one here.")
+        st.number_input(f"Weight jump ({unit})", 0.5, 20.0, step=0.5, key="step", help="The smallest plate jump you use.")
+    with sc2.container(border=True):
+        rc = st.columns(2)
+        rc[0].number_input("Rep range: low", 3, 20, key="low", help="Below this many reps, hold the weight and build reps first.")
+        rc[1].number_input("Rep range: high", 4, 30, key="high", help="Hit this on every set and the app tells you to add weight.")
+        st.caption("Your export has no effort score (RPE), so targets use weight and reps only.")
+
+    section("Your data", "What is loaded right now. Repcompass never stores your files on a server.")
     if use_demo:
         st.info("You are looking at demo data.")
+        st.button("Leave demo", on_click=stop_demo, icon=":material/logout:")
     else:
-        for info in infos:
-            st.markdown(f'<div class="card"><h4>{escape(str(info["name"]))}</h4>'
-                        f'<div class="row" style="margin-top:0">{info["source"]} export · {info["rows"]} set rows</div></div>',
-                        unsafe_allow_html=True)
+        rows = "".join(
+            f'<div class="it" style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--line)">'
+            f'<span><b>{escape(str(info["name"]))}</b><br><span style="color:var(--muted);font-size:.82rem">{escape(str(info["source"]))}</span></span>'
+            f'<span style="color:var(--ink2);font-size:.85rem;white-space:nowrap">{info["rows"]} sets</span></div>'
+            for info in infos)
+        st.markdown(f'<div class="card">{rows}</div>', unsafe_allow_html=True)
         if raw_export is not None:
             label = "Download combined history (CSV)" if len(infos) > 1 else "Download a clean copy (CSV)"
-            st.download_button(label, raw_export.to_csv(index=False).encode("utf-8"),
+            st.download_button(label, raw_export.to_csv(index=False).encode("utf-8"), icon=":material/download:",
                                file_name="repcompass_history.csv", mime="text/csv")
-    st.caption("Tip: export from your app each month, upload the new file together with last month's, and download the "
-               "combined history to keep. Workouts that appear in several files are only counted once, and the file listed last wins.")
+    st.toggle("Remember my data on this device", key="remember",
+              help="Keeps your combined history and settings in this browser (not on any server), so next visit "
+                   "opens straight to your dashboard. New exports are added on top. Turn off on a shared computer.")
+    st.caption("To move to another phone or computer: download the combined history above and load it there.")
+
+    with st.expander("Advanced: sync with a Lyfta API key (optional)", icon=":material/key:",
+                     expanded=bool(st.session_state.get("lyfta_err"))):
+        st.caption(f"Most people should use the CSV export, it needs nothing extra. If you can log in at "
+                   f"[my.lyfta.app]({L.KEY_PAGE}) on the web, you can generate a personal key there and paste it here "
+                   "to pull workouts without exporting. It only reads your workouts.")
+        st.text_input("Lyfta API key", type="password", key="lyfta_key")
+        st.checkbox("Remember key on this device", key="remember_key",
+                    help="Saved in this browser only, so the app syncs by itself next visit. Leave off on a shared computer.")
+        if st.button("Sync now", type="primary", disabled=not lyfta_key, icon=":material/sync:"):
+            run_sync(lyfta_key)
+            st.rerun()
+        if st.session_state.get("lyfta_err"):
+            st.error(st.session_state["lyfta_err"])
+        elif st.session_state.get("lyfta_sync"):
+            _f, _i = st.session_state["lyfta_sync"]
+            st.caption(f"Synced {_i['workouts']} workouts at {st.session_state.get('lyfta_sync_at')}.")
+        for info in infos:
+            if info.get("unknown_set_types"):
+                st.caption(f"Lyfta sent set types Repcompass does not know yet ({', '.join(info['unknown_set_types'])}). "
+                           "They are counted as normal sets.")
 
     section("Save and restore your setup",
             "Your goals, muscle fixes, bodyweight and settings. With Remember on they are kept in this browser automatically. "
@@ -845,7 +1072,7 @@ with t_data:
     cc = st.columns(2)
     cc[0].download_button("Download my setup (JSON)", json.dumps(setup, indent=2).encode("utf-8"),
                           file_name="repcompass_setup.json", mime="application/json")
-    up_setup = cc[1].file_uploader("Restore a setup file", type="json", key="setup_up", label_visibility="collapsed")
+    up_setup = cc[1].file_uploader("Restore a setup file (JSON)", type="json", key="setup_up")
     if up_setup is not None and st.session_state.get("_setup_done") != up_setup.file_id:
         try:
             loaded = json.loads(up_setup.getvalue().decode("utf-8"))
@@ -877,13 +1104,40 @@ with t_data:
 
     section("Where your data lives", "A quick note on how this app handles your data.")
     st.markdown(
-        "- Uploads and Lyfta syncs are read in memory to draw the charts. Nothing is saved on a server and there are no accounts.\n"
+        "- Exports (and optional Lyfta API syncs) are read in memory to draw the charts. Nothing is saved on a server and there are no accounts.\n"
         "- With **Remember my data on this device** on, your combined history and settings are kept in this browser's "
-        "local storage. Another browser or device starts empty: sync again, or upload the history CSV you downloaded above.\n"
+        "local storage. Another browser or device starts empty: load the history CSV you downloaded above.\n"
         "- A Lyfta key is only sent to Lyfta, through this app, to read your workouts. It is kept in this browser only if you tick Remember key.\n"
         "- Running the app locally keeps everything on your own computer.")
     st.button("Forget this device", on_click=forget_device, icon=":material/delete:",
               help="Deletes the saved history, settings and Lyfta key from this browser.")
+
+
+# ================================================================== GLOSSARY (bottom of Settings)
+with t_data:
+    section("Plain-English guide", "Every term used in this app, and the assumptions behind the numbers.")
+    terms = [
+        ("Estimated 1RM (e1RM)", "A guess at the heaviest single rep you could do, worked out from a set with more reps. Formula: weight × (1 + reps ÷ 30). It lets you compare sessions even when the reps differ. Sets above 12 reps are ignored."),
+        ("Hard set", "Any set that is not a warm-up and has reps logged. Counting hard sets per muscle is a simple way to check you train everything enough."),
+        ("Volume", "Weight × reps added up. 3 sets of 10 reps at 50 is 1,500 volume. Used to compare sessions."),
+        ("PR (personal record)", "A session where a lift's e1RM beat everything you did before it."),
+        ("Plateau / stalled", "The last 3 sessions of a lift did not beat the best before them."),
+        ("Double progression", "First fill your rep range at one weight. Once every set hits the top of the range, add weight and start at the bottom again."),
+        ("Deload", "An easier week (about 60% of your usual weight, or half the sets) so fatigue can drop. Repcompass suggests one when several lifts get weaker and you have trained hard for many weeks in a row."),
+        ("Strength level", "Your estimated 1RM divided by your bodyweight, compared with rough Beginner to Elite ratios. A guideline only: it ignores age, height and how long you have trained."),
+        ("Goal ETA", "A straight line fitted to your estimated 1RM over the last 4 months, extended to your target. Real progress slows down, so treat the date as a best case."),
+        ("Rep record", "The heaviest weight you have used for an exact number of reps, such as your best 5-rep weight."),
+        ("RPE", "How close to failure a set was, from 1-10. Your Lyfta export does not include it, so the app cannot use it."),
+    ]
+    for term, d in terms:
+        st.markdown(f'<div class="card"><h4>{term}</h4><div class="row" style="margin-top:0;color:#c3c2b7">{d}</div></div>', unsafe_allow_html=True)
+    section("Good to know", "Honest limits so you do not over-trust the numbers.")
+    st.markdown(
+        "- Muscle groups are guessed from exercise names, so an unusual exercise may land in the wrong group.\n"
+        "- The 10-20 sets per week band is a general guideline, not a prescription for everyone.\n"
+        "- Few sessions means shaky conclusions. Plateau checks need 4+ sessions of the same lift.\n"
+        "- Left and right sets of one-sided exercises are counted as separate sets.\n"
+        "- If you run this locally, your data stays on your computer.")
 
 
 # ================================================================== STRENGTH & GOALS
@@ -1027,8 +1281,6 @@ def _report_pdf(_df, key, month, unit_, lo, hi, stp, ov):
 
 
 with t_coach:
-    bal_c = A.muscle_balance(df)
-    review = F.weekly_review(df, plateaus, deload, bal_c, st.session_state.get("goals", []), unit)
     section("Your weekly review", "A plain-English read of your recent training, written from your own numbers.")
     guide("Each line is one finding. Green is going well, yellow is worth a look, red needs a change.",
           "Mostly green lines and a clear plan for the red ones.",
